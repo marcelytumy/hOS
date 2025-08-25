@@ -17,6 +17,10 @@ public:
     // Basic pixel operations
     void set_pixel(uint32_t x, uint32_t y, uint32_t color);
     uint32_t get_pixel(uint32_t x, uint32_t y);
+
+    // Framebuffer geometry
+    inline uint32_t get_width() const { return width; }
+    inline uint32_t get_height() const { return height; }
     
     // Text rendering
     void draw_char(char c, uint32_t x, uint32_t y, uint32_t color, const Font& font);

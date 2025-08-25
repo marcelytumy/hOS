@@ -3,6 +3,7 @@
 #include <limine.h>
 #include "graphics.hpp"
 #include "font.hpp"
+#include "../../ui/include/ui.hpp"
 
 // Set the base revision to 3, this is recommended as this is the latest
 // base revision described by the Limine boot protocol specification.
@@ -185,6 +186,9 @@ extern "C" void kmain() {
         for (volatile int d = 0; d < 1000000; ++d) { }
     }
 
-    // We're done, just hang...
+    // Draw basic desktop UI (non-interactive)
+    ui::draw_desktop(graphics);
+
+    // Hang after drawing the desktop
     hcf();
 }

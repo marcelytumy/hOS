@@ -1,0 +1,79 @@
+#include <cstdint>
+#include "graphics.hpp"
+#include "font.hpp"
+#include "../include/ui.hpp"
+
+namespace ui {
+
+static inline uint32_t clamp_u32(uint32_t value, uint32_t lo, uint32_t hi) {
+	return value < lo ? lo : (value > hi ? hi : value);
+}
+
+// Colors in 0xRRGGBB
+static constexpr uint32_t kDesktopBg = 0x1E1E1E;
+static constexpr uint32_t kTaskbarBg = 0x2B2B2B;
+static constexpr uint32_t kTaskbarBorder = 0x3A3A3A;
+static constexpr uint32_t kWindowBg = 0x262626;
+static constexpr uint32_t kWindowBorder = 0x4A4A4A;
+static constexpr uint32_t kTitlebarBg = 0x333333;
+static constexpr uint32_t kTitleText = 0xFFFFFF;
+
+static void draw_taskbar(Graphics &gfx, uint32_t screen_w, uint32_t screen_h) {
+	const uint32_t taskbar_h = clamp_u32(screen_h / 18, 32, 64);
+	const uint32_t y = screen_h - taskbar_h;
+	gfx.fill_rect(0, y, screen_w, taskbar_h, kTaskbarBg);
+	gfx.draw_rect(0, y, screen_w, taskbar_h, kTaskbarBorder);
+
+	// Simple start label
+	const char *label = "Start";
+	uint32_t padding = 8;
+	gfx.fill_rect(padding, y + 6, 80, taskbar_h - 12, 0x3B3B3B);
+	gfx.draw_rect(padding, y + 6, 80, taskbar_h - 12, 0x5A5A5A);
+	gfx.draw_string(label, padding + 10, y + (taskbar_h / 2) - (default_font.char_height / 2), kTitleText, default_font);
+}
+
+static void draw_window(Graphics &gfx, uint32_t screen_w, uint32_t screen_h) {
+	const uint32_t taskbar_h = clamp_u32(screen_h / 18, 32, 64);
+	const uint32_t usable_h = screen_h - taskbar_h - 20; // top/bottom margins
+	const uint32_t usable_w = screen_w - 40;             // side margins
+
+	uint32_t win_w = usable_w * 3 / 5;
+	uint32_t win_h = usable_h * 3 / 5;
+	if (win_w < 320) win_w = 320;
+	if (win_h < 200) win_h = 200;
+
+	const uint32_t win_x = (screen_w - win_w) / 2;
+	const uint32_t win_y = (screen_h - taskbar_h - win_h) / 2;
+
+	// Frame
+	gfx.fill_rect(win_x, win_y, win_w, win_h, kWindowBg);
+	gfx.draw_rect(win_x, win_y, win_w, win_h, kWindowBorder);
+
+	// Titlebar
+	const uint32_t title_h = 28;
+	gfx.fill_rect(win_x + 1, win_y + 1, win_w - 2, title_h, kTitlebarBg);
+
+	// Title text
+	gfx.draw_string("Welcome to hOS", win_x + 12, win_y + 6, kTitleText, default_font);
+
+	// Content stub
+	gfx.draw_string("This is a placeholder window.", win_x + 12, win_y + title_h + 12, 0xCCCCCC, default_font);
+}
+
+void draw_desktop(Graphics &gfx) {
+	const uint32_t screen_w = gfx.get_width();
+	const uint32_t screen_h = gfx.get_height();
+
+	// Background
+	gfx.clear_screen(kDesktopBg);
+
+	// Taskbar
+	draw_taskbar(gfx, screen_w, screen_h);
+
+	// Center window
+	draw_window(gfx, screen_w, screen_h);
+}
+
+} // namespace ui
+
+
