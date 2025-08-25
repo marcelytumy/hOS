@@ -165,6 +165,57 @@ void draw(Graphics &gfx, const Window &w) {
 	gfx.draw_string("This is a placeholder window.", rx + 12, ry + th + 12, 0xCCCCCC, default_font);
 }
 
+void draw_frame_only(Graphics &gfx, const Window &w) {
+	if (w.minimized) return;
+	// Effective rect based on fullscreen/maximized, same as draw()
+	uint32_t rx = w.rect.x;
+	uint32_t ry = w.rect.y;
+	uint32_t rw = w.rect.w;
+	uint32_t rh = w.rect.h;
+	const uint32_t screen_w = gfx.get_width();
+	const uint32_t screen_h = gfx.get_height();
+	if (w.fullscreen) {
+		rx = 0; ry = 0; rw = screen_w; rh = screen_h;
+	} else if (w.maximized) {
+		rx = 0; ry = 0; rw = screen_w; rh = screen_h - ui::taskbar::height(screen_h);
+	}
+	const bool is_focused = w.focused;
+	const uint32_t border_col = is_focused ? kWindowBorderFocused : kWindowBorder;
+
+	// Draw just the outer frame/border, no content/title/buttons
+	gfx.draw_rect(rx, ry, rw, rh, border_col);
+
+	// Resizable handle indicator (small ticks) to aid feedback
+	if (w.resizable && !w.fullscreen && !w.maximized) {
+		uint32_t handle_col = is_focused ? 0x858585 : 0x6A6A6A;
+		for (uint32_t i = 0; i < 3; ++i) {
+			uint32_t ox = 4 * i;
+			uint32_t oy = 4 * i;
+			if (rw >= 2 + ox + 2 && rh >= 2 + oy + 2) {
+				gfx.fill_rect(rx + rw - 2 - (2 + ox), ry + rh - 2 - (2 + oy), 2, 2, handle_col);
+			}
+		}
+	}
+}
+
+uint32_t hit_test_resize(const Window &w, uint32_t x, uint32_t y) {
+	if (w.minimized) return 0;
+	if (!w.resizable) return 0;
+	// Effective rect (ignore fs/max for simplicity; they disable resizable usage anyway)
+	if (w.fullscreen || w.maximized) return 0;
+	uint32_t rx = w.rect.x;
+	uint32_t ry = w.rect.y;
+	uint32_t rw = w.rect.w;
+	uint32_t rh = w.rect.h;
+	const uint32_t margin = 4; // grip thickness
+	uint32_t mask = 0;
+	if (x >= rx && x < rx + margin && y >= ry && y < ry + rh) mask |= ResizeLeft;
+	if (x >= rx + rw - margin && x < rx + rw && y >= ry && y < ry + rh) mask |= ResizeRight;
+	if (y >= ry && y < ry + margin && x >= rx && x < rx + rw) mask |= ResizeTop;
+	if (y >= ry + rh - margin && y < ry + rh && x >= rx && x < rx + rw) mask |= ResizeBottom;
+	return mask;
+}
+
 } }
 
 

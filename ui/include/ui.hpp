@@ -31,6 +31,9 @@ void draw_desktop(Graphics &gfx, const window::Window* windows, uint32_t count);
 // Redraw only a region of the desktop (dirty rectangle)
 void draw_desktop_region(Graphics &gfx, const window::Window* windows, uint32_t count, const Rect &dirty);
 
+// Redraw only a region, but draw only frames/titlebars of windows (for perf during drag/resize)
+void draw_desktop_region_frames_only(Graphics &gfx, const window::Window* windows, uint32_t count, const Rect &dirty);
+
 }
 
 

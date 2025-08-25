@@ -251,10 +251,13 @@ extern "C" void kmain() {
     graphics.present();
 
     bool dragging = false;
+    bool resizing = false;
+    uint32_t resize_mask = 0;
     uint32_t drag_off_x = 0;
     uint32_t drag_off_y = 0;
     int dragging_index = -1;
     bool prev_left = false;
+    bool perf_border_only = false; // performance-over-visuals flag (future setting)
 
     // Simple event loop: poll mouse, move cursor, support window dragging
     for (;;) {
@@ -332,6 +335,25 @@ extern "C" void kmain() {
                 bool handled = false;
                 for (int i = static_cast<int>(window_count) - 1; i >= 0; --i) {
                     if (windows[i].minimized) continue;
+                    // First try resize edges
+                    uint32_t hm = ui::window::hit_test_resize(windows[i], cursor.x(), cursor.y());
+                    if (hm != 0) {
+                        resizing = true;
+                        dragging_index = i;
+                        resize_mask = hm;
+                        drag_off_x = cursor.x() - windows[i].rect.x;
+                        drag_off_y = cursor.y() - windows[i].rect.y;
+                        // Bring to front
+                        if (static_cast<uint32_t>(i) != window_count - 1) {
+                            ui::window::Window tmp = windows[i];
+                            for (uint32_t k = i; k + 1 < window_count; ++k) windows[k] = windows[k+1];
+                            windows[window_count - 1] = tmp;
+                            dragging_index = window_count - 1;
+                        }
+                        for (uint32_t j = 0; j < window_count; ++j) windows[j].focused = (j == static_cast<uint32_t>(dragging_index));
+                        handled = true;
+                        break;
+                    }
                     uint32_t btn = ui::window::hit_test_button(windows[i], cursor.x(), cursor.y());
                     if (btn != UINT32_MAX) {
                         // Focus this window
@@ -457,8 +479,21 @@ extern "C" void kmain() {
                 }
             }
         } else if (!left && prev_left) {
+            bool was_dragging = dragging;
+            bool was_resizing = resizing;
             dragging = false;
+            if (resizing) {
+                // Finalize resize
+                resizing = false;
+                resize_mask = 0;
+            }
             dragging_index = -1;
+            // If we were in perf-border-only mode and just finished an interaction,
+            // trigger a full redraw so the window contents are rendered.
+            if (perf_border_only && (was_dragging || was_resizing)) {
+                ui_changed = true;
+                ui_dirty = ui::Rect{0, 0, screen_w, screen_h};
+            }
         }
 
         // Update window position if dragging
@@ -487,6 +522,65 @@ extern "C" void kmain() {
             }
         }
 
+        // Update window size if resizing
+        if (resizing && dragging_index >= 0) {
+            ui::window::Window &w = windows[dragging_index];
+            uint32_t old_x = w.rect.x;
+            uint32_t old_y = w.rect.y;
+            uint32_t old_w = w.rect.w;
+            uint32_t old_h = w.rect.h;
+
+            int64_t nx = w.rect.x;
+            int64_t ny = w.rect.y;
+            int64_t nw = w.rect.w;
+            int64_t nh = w.rect.h;
+
+            const int64_t min_w = 160;
+            const int64_t min_h = 120;
+
+            if (resize_mask & ui::window::ResizeLeft) {
+                int64_t new_left = static_cast<int64_t>(cursor.x());
+                if (new_left < 0) new_left = 0;
+                if (new_left > static_cast<int64_t>(w.rect.x + w.rect.w) - min_w) new_left = static_cast<int64_t>(w.rect.x + w.rect.w) - min_w;
+                nw = (w.rect.x + w.rect.w) - new_left;
+                nx = new_left;
+            }
+            if (resize_mask & ui::window::ResizeRight) {
+                int64_t new_right = static_cast<int64_t>(cursor.x());
+                if (new_right > static_cast<int64_t>(screen_w)) new_right = screen_w;
+                nw = new_right - static_cast<int64_t>(w.rect.x);
+                if (nw < min_w) nw = min_w;
+            }
+            if (resize_mask & ui::window::ResizeTop) {
+                int64_t new_top = static_cast<int64_t>(cursor.y());
+                if (new_top < 0) new_top = 0;
+                if (new_top > static_cast<int64_t>(w.rect.y + w.rect.h) - min_h) new_top = static_cast<int64_t>(w.rect.y + w.rect.h) - min_h;
+                nh = (w.rect.y + w.rect.h) - new_top;
+                ny = new_top;
+            }
+            if (resize_mask & ui::window::ResizeBottom) {
+                int64_t new_bottom = static_cast<int64_t>(cursor.y());
+                uint32_t bottom_limit = screen_h - taskbar_h;
+                if (new_bottom > static_cast<int64_t>(bottom_limit)) new_bottom = bottom_limit;
+                nh = new_bottom - static_cast<int64_t>(w.rect.y);
+                if (nh < min_h) nh = min_h;
+            }
+
+            if (nx != static_cast<int64_t>(old_x) || ny != static_cast<int64_t>(old_y) ||
+                nw != static_cast<int64_t>(old_w) || nh != static_cast<int64_t>(old_h)) {
+                w.rect.x = static_cast<uint32_t>(nx);
+                w.rect.y = static_cast<uint32_t>(ny);
+                w.rect.w = static_cast<uint32_t>(nw);
+                w.rect.h = static_cast<uint32_t>(nh);
+                // Dirty region is union of old and new window rects
+                uint32_t rx0 = old_x < w.rect.x ? old_x : w.rect.x;
+                uint32_t ry0 = old_y < w.rect.y ? old_y : w.rect.y;
+                uint32_t rx1 = (old_x + old_w) > (w.rect.x + w.rect.w) ? (old_x + old_w) : (w.rect.x + w.rect.w);
+                uint32_t ry1 = (old_y + old_h) > (w.rect.y + w.rect.h) ? (old_y + old_h) : (w.rect.y + w.rect.h);
+                add_dirty(ui::Rect{rx0, ry0, rx1 - rx0, ry1 - ry0});
+            }
+        }
+
         // If UI changed, ensure cursor underlay is accurate before redraw
         if (ui_changed && !cursor_erased) {
             cursor.erase(graphics);
@@ -495,7 +589,11 @@ extern "C" void kmain() {
 
         // Redraw only the UI dirty region if needed
         if (ui_changed) {
-            ui::draw_desktop_region(graphics, windows, window_count, ui_dirty);
+            if ((dragging || resizing) && perf_border_only) {
+                ui::draw_desktop_region_frames_only(graphics, windows, window_count, ui_dirty);
+            } else {
+                ui::draw_desktop_region(graphics, windows, window_count, ui_dirty);
+            }
         }
 
         // Redraw cursor if it moved or UI changed underneath
