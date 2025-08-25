@@ -120,6 +120,40 @@ void draw_desktop(Graphics &gfx, const window::Window* windows, uint32_t count) 
 	}
 }
 
+void draw_desktop_region(Graphics &gfx, const window::Window* windows, uint32_t count, const Rect &dirty) {
+    // Clip drawing to the dirty rectangle
+    gfx.set_clip_rect(dirty.x, dirty.y, dirty.w, dirty.h);
+
+    const uint32_t screen_w = gfx.get_width();
+    const uint32_t screen_h = gfx.get_height();
+
+    // Background for the dirty region only
+    // Instead of re-clearing the whole screen, fill only the dirty area with desktop bg
+    gfx.fill_rect(dirty.x, dirty.y, dirty.w, dirty.h, kDesktopBg);
+
+    // Redraw taskbar if intersects dirty
+    const uint32_t tb_h = taskbar::height(screen_h);
+    const uint32_t tb_y = screen_h - tb_h;
+    uint32_t x0 = dirty.x, y0 = dirty.y, x1 = dirty.x + dirty.w, y1 = dirty.y + dirty.h;
+    if (!(y1 <= tb_y || y0 >= screen_h)) {
+        // intersection exists; redraw entire taskbar band in the dirty area
+        taskbar::draw(gfx, screen_w, screen_h, windows, count);
+    }
+
+    // Redraw windows that intersect the dirty region
+    for (uint32_t i = 0; i < count; ++i) {
+        const window::Window &w = windows[i];
+        if (w.minimized) continue;
+        uint32_t wx0 = w.rect.x, wy0 = w.rect.y, wx1 = w.rect.x + w.rect.w, wy1 = w.rect.y + w.rect.h;
+        bool intersects = !(wx1 <= x0 || wx0 >= x1 || wy1 <= y0 || wy0 >= y1);
+        if (intersects) {
+            window::draw(gfx, w);
+        }
+    }
+
+    gfx.clear_clip();
+}
+
 uint32_t get_taskbar_height(uint32_t screen_h) {
 	return clamp_u32(screen_h / 18, 32, 64);
 }

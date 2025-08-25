@@ -242,15 +242,48 @@ extern "C" void kmain() {
             continue;
         }
 
-        // Track whether anything changed that requires a redraw/present
-        bool changed = false;
+        // Track dirty regions for partial redraw/present
+        bool ui_changed = false;
+        ui::Rect ui_dirty{0, 0, 0, 0};
+        auto add_dirty = [&](const ui::Rect &r) {
+            if (r.w == 0 || r.h == 0) return;
+            if (ui_dirty.w == 0 || ui_dirty.h == 0) {
+                ui_dirty = r;
+            } else {
+                uint32_t x0 = ui_dirty.x < r.x ? ui_dirty.x : r.x;
+                uint32_t y0 = ui_dirty.y < r.y ? ui_dirty.y : r.y;
+                uint32_t x1a = ui_dirty.x + ui_dirty.w;
+                uint32_t y1a = ui_dirty.y + ui_dirty.h;
+                uint32_t x1b = r.x + r.w;
+                uint32_t y1b = r.y + r.h;
+                uint32_t x1 = x1a > x1b ? x1a : x1b;
+                uint32_t y1 = y1a > y1b ? y1a : y1b;
+                ui_dirty.x = x0;
+                ui_dirty.y = y0;
+                ui_dirty.w = x1 - x0;
+                ui_dirty.h = y1 - y0;
+            }
+            ui_changed = true;
+        };
+
         bool cursor_erased = false;
+        ui::Rect cursor_dirty{0, 0, 0, 0};
         const bool cursor_moved = (dx != 0) || (dy != 0);
+        uint32_t prev_cx = cursor.x();
+        uint32_t prev_cy = cursor.y();
         if (cursor_moved) {
             cursor.erase(graphics);
             cursor_erased = true;
             cursor.move_by(dx, dy, screen_w, screen_h);
-            changed = true;
+            // Dirty rect covering old and new cursor pixels
+            uint32_t x0 = prev_cx < cursor.x() ? prev_cx : cursor.x();
+            uint32_t y0 = prev_cy < cursor.y() ? prev_cy : cursor.y();
+            uint32_t x1 = (prev_cx > cursor.x() ? prev_cx : cursor.x()) + 1;
+            uint32_t y1 = (prev_cy > cursor.y() ? prev_cy : cursor.y()) + 1;
+            cursor_dirty.x = x0;
+            cursor_dirty.y = y0;
+            cursor_dirty.w = x1 - x0;
+            cursor_dirty.h = y1 - y0;
         }
 
         // Handle drag begin/end and taskbar clicks
@@ -261,13 +294,16 @@ extern "C" void kmain() {
                 // Toggle minimize; if restoring, bring to front by moving to end
                 bool was_min = windows[tb_hit].minimized;
                 windows[tb_hit].minimized = !windows[tb_hit].minimized;
+                ui::Rect affected = windows[tb_hit].rect;
                 if (was_min) {
                     // bring to front
                     ui::window::Window tmp = windows[tb_hit];
                     for (uint32_t i = tb_hit; i + 1 < window_count; ++i) windows[i] = windows[i+1];
                     windows[window_count - 1] = tmp;
                 }
-                changed = true;
+                // Dirty: the window area and the taskbar band
+                add_dirty(ui::Rect{affected.x, affected.y, affected.w, affected.h});
+                add_dirty(ui::Rect{0, screen_h - taskbar_h, screen_w, taskbar_h});
             } else {
                 // Check windows from topmost to bottom for titlebar drag
                 for (int i = static_cast<int>(window_count) - 1; i >= 0; --i) {
@@ -283,7 +319,7 @@ extern "C" void kmain() {
                             for (uint32_t k = i; k + 1 < window_count; ++k) windows[k] = windows[k+1];
                             windows[window_count - 1] = tmp;
                             dragging_index = window_count - 1;
-                            changed = true; // z-order changed
+                            add_dirty(ui::Rect{windows[dragging_index].rect.x, windows[dragging_index].rect.y, windows[dragging_index].rect.w, windows[dragging_index].rect.h});
                         }
                         break;
                     }
@@ -311,19 +347,56 @@ extern "C" void kmain() {
             if (nx != old_x || ny != old_y) {
                 w.rect.x = nx;
                 w.rect.y = ny;
-                changed = true;
+                // Dirty region is union of old and new window rects
+                uint32_t rx0 = old_x < nx ? old_x : nx;
+                uint32_t ry0 = old_y < ny ? old_y : ny;
+                uint32_t rx1 = (old_x + w.rect.w) > (nx + w.rect.w) ? (old_x + w.rect.w) : (nx + w.rect.w);
+                uint32_t ry1 = (old_y + w.rect.h) > (ny + w.rect.h) ? (old_y + w.rect.h) : (ny + w.rect.h);
+                add_dirty(ui::Rect{rx0, ry0, rx1 - rx0, ry1 - ry0});
             }
         }
 
-        // If something changed, redraw desktop and cursor, then present once
-        if (changed) {
-            if (!cursor_erased) {
-                // Ensure the saved under-cursor pixel doesn't reflect stale content
-                cursor.erase(graphics);
-            }
-            ui::draw_desktop(graphics, windows, window_count);
+        // If UI changed, ensure cursor underlay is accurate before redraw
+        if (ui_changed && !cursor_erased) {
+            cursor.erase(graphics);
+            cursor_erased = true;
+        }
+
+        // Redraw only the UI dirty region if needed
+        if (ui_changed) {
+            ui::draw_desktop_region(graphics, windows, window_count, ui_dirty);
+        }
+
+        // Redraw cursor if it moved or UI changed underneath
+        if (cursor_erased) {
             cursor.draw(graphics);
-            graphics.present();
+        }
+
+        // Present only the union of dirty regions
+        if (ui_changed || cursor_moved) {
+            // Union ui_dirty and cursor_dirty
+            ui::Rect present_rect = ui_dirty;
+            if (cursor_moved) {
+                if (present_rect.w == 0 || present_rect.h == 0) {
+                    present_rect = cursor_dirty;
+                } else {
+                    uint32_t x0 = present_rect.x < cursor_dirty.x ? present_rect.x : cursor_dirty.x;
+                    uint32_t y0 = present_rect.y < cursor_dirty.y ? present_rect.y : cursor_dirty.y;
+                    uint32_t x1a = present_rect.x + present_rect.w;
+                    uint32_t y1a = present_rect.y + present_rect.h;
+                    uint32_t x1b = cursor_dirty.x + cursor_dirty.w;
+                    uint32_t y1b = cursor_dirty.y + cursor_dirty.h;
+                    uint32_t x1 = x1a > x1b ? x1a : x1b;
+                    uint32_t y1 = y1a > y1b ? y1a : y1b;
+                    present_rect.x = x0;
+                    present_rect.y = y0;
+                    present_rect.w = x1 - x0;
+                    present_rect.h = y1 - y0;
+                }
+            }
+            if (present_rect.w != 0 && present_rect.h != 0) {
+                graphics.present_rect(present_rect.x, present_rect.y, present_rect.w, present_rect.h);
+            }
         }
 
         prev_left = left;

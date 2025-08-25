@@ -15,6 +15,13 @@ private:
     uint32_t* backbuffer;
     uint32_t backbuffer_capacity_pixels;
     bool use_backbuffer;
+
+    // Optional clipping rectangle
+    bool clip_enabled;
+    uint32_t clip_x0;
+    uint32_t clip_y0;
+    uint32_t clip_x1;
+    uint32_t clip_y1;
     
 public:
     Graphics(limine_framebuffer* fb);
@@ -71,4 +78,15 @@ public:
     // Double buffering control
     void enable_backbuffer(uint32_t* buffer, uint32_t capacity_pixels);
     void present();
+    void present_rect(uint32_t x, uint32_t y, uint32_t w, uint32_t h);
+
+    // Clipping control
+    inline void set_clip_rect(uint32_t x, uint32_t y, uint32_t w, uint32_t h) {
+        clip_enabled = true;
+        clip_x0 = x;
+        clip_y0 = y;
+        clip_x1 = x + w;
+        clip_y1 = y + h;
+    }
+    inline void clear_clip() { clip_enabled = false; }
 };

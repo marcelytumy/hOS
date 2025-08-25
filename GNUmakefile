@@ -243,6 +243,7 @@ endif
 clean:
 	$(MAKE) -C kernel clean
 	rm -rf iso_root $(IMAGE_NAME).iso $(IMAGE_NAME).hdd
+	rm -rf ./kernel/ui
 
 .PHONY: distclean
 distclean:

@@ -28,6 +28,9 @@ namespace window { struct Window; }
 // Draw desktop with multiple windows; draws taskbar and all non-minimized windows in order
 void draw_desktop(Graphics &gfx, const window::Window* windows, uint32_t count);
 
+// Redraw only a region of the desktop (dirty rectangle)
+void draw_desktop_region(Graphics &gfx, const window::Window* windows, uint32_t count, const Rect &dirty);
+
 }
 
 

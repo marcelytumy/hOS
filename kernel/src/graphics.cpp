@@ -10,15 +10,20 @@ Graphics::Graphics(limine_framebuffer* fb) {
     backbuffer = nullptr;
     backbuffer_capacity_pixels = 0;
     use_backbuffer = false;
+    clip_enabled = false;
+    clip_x0 = clip_y0 = 0;
+    clip_x1 = clip_y1 = 0;
 }
 
 void Graphics::set_pixel(uint32_t x, uint32_t y, uint32_t color) {
-    if (x < width && y < height) {
-        if (use_backbuffer) {
-            backbuffer[y * width + x] = color;
-        } else {
-            fb_ptr[y * pitch + x] = color;
-        }
+    if (x >= width || y >= height) return;
+    if (clip_enabled) {
+        if (x < clip_x0 || x >= clip_x1 || y < clip_y0 || y >= clip_y1) return;
+    }
+    if (use_backbuffer) {
+        backbuffer[y * width + x] = color;
+    } else {
+        fb_ptr[y * pitch + x] = color;
     }
 }
 
@@ -311,6 +316,20 @@ void Graphics::present() {
     for (uint32_t y = 0; y < height; y++) {
         for (uint32_t x = 0; x < width; x++) {
             fb_ptr[y * pitch + x] = backbuffer[y * width + x];
+        }
+    }
+}
+
+void Graphics::present_rect(uint32_t x0, uint32_t y0, uint32_t w, uint32_t h) {
+    if (!use_backbuffer) return;
+    if (x0 >= width || y0 >= height) return;
+    uint32_t x1 = x0 + w; if (x1 > width) x1 = width;
+    uint32_t y1 = y0 + h; if (y1 > height) y1 = height;
+    for (uint32_t y = y0; y < y1; ++y) {
+        uint32_t* dst = &fb_ptr[y * pitch + x0];
+        uint32_t* src = &backbuffer[y * width + x0];
+        for (uint32_t x = x0; x < x1; ++x) {
+            *dst++ = *src++;
         }
     }
 }
