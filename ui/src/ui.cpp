@@ -34,8 +34,6 @@ static void draw_taskbar(Graphics &gfx, uint32_t screen_w, uint32_t screen_h) {
 	gfx.draw_string(label, padding + 10, y + (taskbar_h / 2) - (default_font.char_height / 2), kTitleText, default_font);
 }
 
-// (legacy window drawing helper removed)
-
 void draw_desktop(Graphics &gfx) {
 	const uint32_t screen_w = gfx.get_width();
 	const uint32_t screen_h = gfx.get_height();
@@ -71,8 +69,6 @@ void draw_desktop(Graphics &gfx) {
 	// Content stub
 	gfx.draw_string("This is a placeholder window.", win_x + 12, win_y + title_h + 12, 0xCCCCCC, default_font);
 }
-
-// --- New helpers for window dragging ---
 
 static void draw_window_rect(Graphics &gfx, const Rect &r) {
 	// Frame
@@ -169,5 +165,3 @@ bool point_in_titlebar(const Rect &window_rect, uint32_t x, uint32_t y) {
 }
 
 } // namespace ui
-
-
