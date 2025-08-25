@@ -92,6 +92,7 @@ override SHARED_FLAGS := \
 override CPPFLAGS_C := \
     -I src \
     -I ../ui/include \
+    -I ../input/include \
     -I limine-protocol/include \
     -isystem freestnd-c-hdrs/$(ARCH)/include \
     $(CPPFLAGS) \
@@ -220,7 +221,7 @@ override LDFLAGS += \
 # Use "find" to glob all *.c, *.cpp, *.S, and *.asm files in the tree
 # (except the src/arch/* directories, as those are gonna be added
 # in the next step).
-override SRCFILES := $(shell find -L src cc-runtime/src ../ui/src -type f -not -path 'src/arch/*' 2>/dev/null | LC_ALL=C sort)
+override SRCFILES := $(shell find -L src cc-runtime/src ../ui/src ../input/src -type f -not -path 'src/arch/*' 2>/dev/null | LC_ALL=C sort)
 # Add architecture specific files, if they exist.
 override SRCFILES += $(shell find -L src/arch/$(ARCH) -type f 2>/dev/null | LC_ALL=C sort)
 # Obtain the object and header dependencies file names.

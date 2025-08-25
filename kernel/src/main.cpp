@@ -4,6 +4,8 @@
 #include "graphics.hpp"
 #include "font.hpp"
 #include "../../ui/include/ui.hpp"
+#include "../../ui/include/cursor.hpp"
+#include "../../input/include/mouse.hpp"
 
 // Set the base revision to 3, this is recommended as this is the latest
 // base revision described by the Limine boot protocol specification.
@@ -186,9 +188,79 @@ extern "C" void kmain() {
         for (volatile int d = 0; d < 1000000; ++d) { }
     }
 
-    // Draw basic desktop UI (non-interactive)
-    ui::draw_desktop(graphics);
+    // Enable double-buffering backbuffer
+    static uint32_t backbuffer_storage[1920 * 1080];
+    graphics.enable_backbuffer(backbuffer_storage, 1920u * 1080u);
 
-    // Hang after drawing the desktop
-    hcf();
+    // Compute initial centered window rect
+    const uint32_t screen_w = graphics.get_width();
+    const uint32_t screen_h = graphics.get_height();
+    const uint32_t taskbar_h = ui::get_taskbar_height(screen_h);
+    const uint32_t usable_h = screen_h - taskbar_h - 20;
+    const uint32_t usable_w = screen_w - 40;
+    uint32_t win_w = (usable_w * 3) / 5;
+    uint32_t win_h = (usable_h * 3) / 5;
+    if (win_w < 320) win_w = 320;
+    if (win_h < 200) win_h = 200;
+    ui::Rect window_rect{(screen_w - win_w) / 2, (screen_h - taskbar_h - win_h) / 2, win_w, win_h};
+
+    // Draw desktop with window (to backbuffer), then present
+    ui::draw_desktop(graphics, window_rect);
+    graphics.present();
+
+    // Initialize mouse and cursor
+    input::Ps2Mouse mouse;
+    mouse.initialize();
+    ui::Cursor cursor;
+    cursor.set_position(screen_w / 2, screen_h / 2, screen_w, screen_h);
+    cursor.draw(graphics);
+    graphics.present();
+
+    bool dragging = false;
+    uint32_t drag_off_x = 0;
+    uint32_t drag_off_y = 0;
+    bool prev_left = false;
+
+    // Simple event loop: poll mouse, move cursor, support window dragging
+    for (;;) {
+        int8_t dx = 0, dy = 0; bool left = false, right = false, middle = false;
+        if (!mouse.poll_packet(dx, dy, left, right, middle)) {
+            continue;
+        }
+
+        // Update cursor position
+        cursor.erase(graphics);
+        cursor.move_by(dx, dy, screen_w, screen_h);
+
+        // Handle drag begin/end based on left button edge
+        if (left && !prev_left) {
+            if (ui::point_in_titlebar(window_rect, cursor.x(), cursor.y())) {
+                dragging = true;
+                drag_off_x = cursor.x() - window_rect.x;
+                drag_off_y = cursor.y() - window_rect.y;
+            }
+        } else if (!left && prev_left) {
+            dragging = false;
+        }
+
+        // Update window position if dragging
+        if (dragging) {
+            int64_t new_x = static_cast<int64_t>(cursor.x()) - static_cast<int64_t>(drag_off_x);
+            int64_t new_y = static_cast<int64_t>(cursor.y()) - static_cast<int64_t>(drag_off_y);
+            if (new_x < 0) new_x = 0;
+            if (new_y < 0) new_y = 0;
+            if (new_x > static_cast<int64_t>(screen_w - window_rect.w)) new_x = screen_w - window_rect.w;
+            uint32_t bottom_limit = screen_h - taskbar_h - window_rect.h;
+            if (new_y > static_cast<int64_t>(bottom_limit)) new_y = bottom_limit;
+            window_rect.x = static_cast<uint32_t>(new_x);
+            window_rect.y = static_cast<uint32_t>(new_y);
+        }
+
+        // Redraw desktop and cursor to backbuffer then present once
+        ui::draw_desktop(graphics, window_rect);
+        cursor.draw(graphics);
+        graphics.present();
+
+        prev_left = left;
+    }
 }

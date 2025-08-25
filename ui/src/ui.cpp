@@ -71,7 +71,75 @@ void draw_desktop(Graphics &gfx) {
 	draw_taskbar(gfx, screen_w, screen_h);
 
 	// Center window
-	draw_window(gfx, screen_w, screen_h);
+	const uint32_t taskbar_h = clamp_u32(screen_h / 18, 32, 64);
+	const uint32_t usable_h = screen_h - taskbar_h - 20; // top/bottom margins
+	const uint32_t usable_w = screen_w - 40;             // side margins
+	uint32_t win_w = usable_w * 3 / 5;
+	uint32_t win_h = usable_h * 3 / 5;
+	if (win_w < 320) win_w = 320;
+	if (win_h < 200) win_h = 200;
+	const uint32_t win_x = (screen_w - win_w) / 2;
+	const uint32_t win_y = (screen_h - taskbar_h - win_h) / 2;
+
+	// Frame
+	gfx.fill_rect(win_x, win_y, win_w, win_h, kWindowBg);
+	gfx.draw_rect(win_x, win_y, win_w, win_h, kWindowBorder);
+
+	// Titlebar
+	const uint32_t title_h = 28;
+	gfx.fill_rect(win_x + 1, win_y + 1, win_w - 2, title_h, kTitlebarBg);
+
+	// Title text
+	gfx.draw_string("Welcome to hOS", win_x + 12, win_y + 6, kTitleText, default_font);
+
+	// Content stub
+	gfx.draw_string("This is a placeholder window.", win_x + 12, win_y + title_h + 12, 0xCCCCCC, default_font);
+}
+
+// --- New helpers for window dragging ---
+
+static void draw_window_rect(Graphics &gfx, const Rect &r) {
+	// Frame
+	gfx.fill_rect(r.x, r.y, r.w, r.h, kWindowBg);
+	gfx.draw_rect(r.x, r.y, r.w, r.h, kWindowBorder);
+
+	// Titlebar
+	const uint32_t title_h = 28;
+	gfx.fill_rect(r.x + 1, r.y + 1, r.w - 2, title_h, kTitlebarBg);
+
+	// Title text
+	gfx.draw_string("Welcome to hOS", r.x + 12, r.y + 6, kTitleText, default_font);
+
+	// Content stub
+	gfx.draw_string("This is a placeholder window.", r.x + 12, r.y + title_h + 12, 0xCCCCCC, default_font);
+}
+
+void draw_desktop(Graphics &gfx, const Rect &window_rect) {
+	const uint32_t screen_w = gfx.get_width();
+	const uint32_t screen_h = gfx.get_height();
+
+	// Background
+	gfx.clear_screen(kDesktopBg);
+
+	// Taskbar
+	draw_taskbar(gfx, screen_w, screen_h);
+
+	// Window at provided rect
+	draw_window_rect(gfx, window_rect);
+}
+
+uint32_t get_taskbar_height(uint32_t screen_h) {
+	return clamp_u32(screen_h / 18, 32, 64);
+}
+
+uint32_t get_titlebar_height() {
+	return 28;
+}
+
+bool point_in_titlebar(const Rect &window_rect, uint32_t x, uint32_t y) {
+	const uint32_t title_h = get_titlebar_height();
+	return x >= window_rect.x + 1 && x < window_rect.x + window_rect.w - 1 &&
+	       y >= window_rect.y + 1 && y < window_rect.y + 1 + title_h;
 }
 
 } // namespace ui

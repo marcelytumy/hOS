@@ -7,16 +7,26 @@ Graphics::Graphics(limine_framebuffer* fb) {
     width = framebuffer->width;
     height = framebuffer->height;
     pitch = framebuffer->pitch / 4; // Assuming 32-bit pixels
+    backbuffer = nullptr;
+    backbuffer_capacity_pixels = 0;
+    use_backbuffer = false;
 }
 
 void Graphics::set_pixel(uint32_t x, uint32_t y, uint32_t color) {
     if (x < width && y < height) {
-        fb_ptr[y * pitch + x] = color;
+        if (use_backbuffer) {
+            backbuffer[y * width + x] = color;
+        } else {
+            fb_ptr[y * pitch + x] = color;
+        }
     }
 }
 
 uint32_t Graphics::get_pixel(uint32_t x, uint32_t y) {
     if (x < width && y < height) {
+        if (use_backbuffer) {
+            return backbuffer[y * width + x];
+        }
         return fb_ptr[y * pitch + x];
     }
     return 0;
@@ -273,6 +283,34 @@ void Graphics::fill_rect(uint32_t x, uint32_t y, uint32_t w, uint32_t h, uint32_
     for (uint32_t py = 0; py < h; py++) {
         for (uint32_t px = 0; px < w; px++) {
             set_pixel(x + px, y + py, color);
+        }
+    }
+}
+
+void Graphics::enable_backbuffer(uint32_t* buffer, uint32_t capacity_pixels) {
+    if (buffer == nullptr) {
+        use_backbuffer = false;
+        backbuffer = nullptr;
+        backbuffer_capacity_pixels = 0;
+        return;
+    }
+    const uint32_t needed = width * height;
+    if (capacity_pixels >= needed) {
+        backbuffer = buffer;
+        backbuffer_capacity_pixels = capacity_pixels;
+        use_backbuffer = true;
+    } else {
+        use_backbuffer = false;
+        backbuffer = nullptr;
+        backbuffer_capacity_pixels = 0;
+    }
+}
+
+void Graphics::present() {
+    if (!use_backbuffer) return;
+    for (uint32_t y = 0; y < height; y++) {
+        for (uint32_t x = 0; x < width; x++) {
+            fb_ptr[y * pitch + x] = backbuffer[y * width + x];
         }
     }
 }
