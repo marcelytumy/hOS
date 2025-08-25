@@ -1,0 +1,8 @@
+/compile_commands.json
+/.cache
+/freestnd-c-hdrs
+/freestnd-cxx-hdrs
+/cc-runtime
+/limine-protocol
+/bin-*
+/obj-*

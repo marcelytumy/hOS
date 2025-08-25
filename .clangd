@@ -1,0 +1,51 @@
+CompileFlags:
+  Add:
+    - "-nostdinc"
+    - "-ffreestanding"
+    - "-fno-stack-protector"
+    - "-fno-stack-check"
+    - "-fno-lto"
+    - "-fno-PIC"
+    - "-ffunction-sections"
+    - "-fdata-sections"
+    - "-Wall"
+    - "-Wextra"
+    - "-m64"
+    - "-march=x86-64"
+    - "-mabi=sysv"
+    - "-mno-80387"
+    - "-mno-mmx"
+    - "-mno-sse"
+    - "-mno-sse2"
+    - "-mno-red-zone"
+    - "-mcmodel=kernel"
+    - "-I"
+    - "kernel/src"
+    - "-I"
+    - "kernel/limine-protocol/include"
+    - "-isystem"
+    - "kernel/freestnd-c-hdrs/x86_64/include"
+    - "-isystem"
+    - "kernel/freestnd-cxx-hdrs/x86_64/include"
+    - "-DLIMINE_API_REVISION=3"
+    - "-target"
+    - "x86_64-unknown-none-elf"
+
+---
+If:
+  PathMatch: [".*\\.cpp$", ".*\\.cc$", ".*\\.cxx$"]
+CompileFlags:
+  Add:
+    - "-std=gnu++20"
+    - "-fno-exceptions"
+    - "-fno-rtti"
+
+---
+If:
+  PathMatch: ".*\\.c$"
+CompileFlags:
+  Add:
+    - "-std=gnu11"
+
+
+
