@@ -209,13 +209,34 @@ extern "C" void kmain() {
     windows[0].rect = ui::Rect{(screen_w - win_w) / 2, (screen_h - taskbar_h - win_h) / 2, win_w, win_h};
     windows[0].title = "Welcome to hOS";
     windows[0].minimized = false;
+    windows[0].maximized = false;
+    windows[0].fullscreen = false;
+    windows[0].resizable = true;
+    windows[0].movable = true;
+    windows[0].draggable = true;
+    windows[0].closeable = true;
+    windows[0].focused = false;
+    windows[0].always_on_top = false;
     // Second window (smaller)
     uint32_t win2_w = win_w / 2; if (win2_w < 280) win2_w = 280;
     uint32_t win2_h = win_h / 2; if (win2_h < 160) win2_h = 160;
     windows[1].rect = ui::Rect{windows[0].rect.x + 40, windows[0].rect.y + 40, win2_w, win2_h};
     windows[1].title = "About";
     windows[1].minimized = false;
+    windows[1].maximized = false;
+    windows[1].fullscreen = false;
+    windows[1].resizable = true;
+    windows[1].movable = true;
+    windows[1].draggable = true;
+    windows[1].closeable = true;
+    windows[1].focused = true; // topmost initially
+    windows[1].always_on_top = false;
     uint32_t window_count = 2;
+
+    // Saved rects for restore after maximize
+    ui::Rect saved_rects[16];
+    bool saved_rect_valid[16];
+    for (uint32_t i = 0; i < 16; ++i) saved_rect_valid[i] = false;
 
     // Draw desktop with windows (to backbuffer), then present
     ui::draw_desktop(graphics, windows, window_count);
@@ -300,28 +321,138 @@ extern "C" void kmain() {
                     ui::window::Window tmp = windows[tb_hit];
                     for (uint32_t i = tb_hit; i + 1 < window_count; ++i) windows[i] = windows[i+1];
                     windows[window_count - 1] = tmp;
+                    // focus restored window
+                    for (uint32_t j = 0; j < window_count; ++j) windows[j].focused = (j == window_count - 1);
                 }
                 // Dirty: the window area and the taskbar band
                 add_dirty(ui::Rect{affected.x, affected.y, affected.w, affected.h});
                 add_dirty(ui::Rect{0, screen_h - taskbar_h, screen_w, taskbar_h});
             } else {
-                // Check windows from topmost to bottom for titlebar drag
+                // Click on windows from topmost to bottom: handle buttons first, then drag
+                bool handled = false;
                 for (int i = static_cast<int>(window_count) - 1; i >= 0; --i) {
                     if (windows[i].minimized) continue;
-                    if (ui::window::point_in_titlebar(windows[i], cursor.x(), cursor.y())) {
-                        dragging = true;
-                        dragging_index = i;
-                        drag_off_x = cursor.x() - windows[i].rect.x;
-                        drag_off_y = cursor.y() - windows[i].rect.y;
-                        // bring to front if not already
-                        if (static_cast<uint32_t>(i) != window_count - 1) {
-                            ui::window::Window tmp = windows[i];
-                            for (uint32_t k = i; k + 1 < window_count; ++k) windows[k] = windows[k+1];
-                            windows[window_count - 1] = tmp;
-                            dragging_index = window_count - 1;
-                            add_dirty(ui::Rect{windows[dragging_index].rect.x, windows[dragging_index].rect.y, windows[dragging_index].rect.w, windows[dragging_index].rect.h});
+                    uint32_t btn = ui::window::hit_test_button(windows[i], cursor.x(), cursor.y());
+                    if (btn != UINT32_MAX) {
+                        // Focus this window
+                        for (uint32_t j = 0; j < window_count; ++j) windows[j].focused = (j == static_cast<uint32_t>(i));
+                        // Handle button action
+                        if (btn == 0 && windows[i].closeable) {
+                            // Close window: remove from array
+                            ui::Rect oldr = windows[i].rect;
+                            for (uint32_t k = i; k + 1 < window_count; ++k) {
+                                windows[k] = windows[k+1];
+                                saved_rects[k] = saved_rects[k+1];
+                                saved_rect_valid[k] = saved_rect_valid[k+1];
+                            }
+                            window_count--;
+                            add_dirty(ui::Rect{oldr.x, oldr.y, oldr.w, oldr.h});
+                            add_dirty(ui::Rect{0, screen_h - taskbar_h, screen_w, taskbar_h});
+                        } else if (btn == 1) {
+                            // Minimize
+                            bool was_min_local = windows[i].minimized;
+                            windows[i].minimized = !windows[i].minimized;
+                            add_dirty(ui::Rect{windows[i].rect.x, windows[i].rect.y, windows[i].rect.w, windows[i].rect.h});
+                            add_dirty(ui::Rect{0, screen_h - taskbar_h, screen_w, taskbar_h});
+                            if (!was_min_local) {
+                                // If minimized the focused window, clear focus
+                                if (windows[i].focused) windows[i].focused = false;
+                            }
+                        } else if (btn == 2) {
+                            // Maximize/restore
+                            ui::Rect oldr = windows[i].rect;
+                            if (!windows[i].maximized) {
+                                saved_rects[i] = windows[i].rect;
+                                saved_rect_valid[i] = true;
+                                windows[i].maximized = true;
+                                windows[i].fullscreen = false;
+                                windows[i].rect.x = 0;
+                                windows[i].rect.y = 0;
+                                windows[i].rect.w = screen_w;
+                                windows[i].rect.h = screen_h - taskbar_h;
+                            } else {
+                                windows[i].maximized = false;
+                                if (saved_rect_valid[i]) {
+                                    windows[i].rect = saved_rects[i];
+                                    saved_rect_valid[i] = false;
+                                }
+                            }
+                            // bring to front
+                            if (static_cast<uint32_t>(i) != window_count - 1) {
+                                ui::window::Window tmp = windows[i];
+                                ui::Rect sr = saved_rects[i];
+                                bool srv = saved_rect_valid[i];
+                                for (uint32_t k = i; k + 1 < window_count; ++k) {
+                                    windows[k] = windows[k+1];
+                                    saved_rects[k] = saved_rects[k+1];
+                                    saved_rect_valid[k] = saved_rect_valid[k+1];
+                                }
+                                windows[window_count - 1] = tmp;
+                                saved_rects[window_count - 1] = sr;
+                                saved_rect_valid[window_count - 1] = srv;
+                            }
+                            for (uint32_t j = 0; j < window_count; ++j) windows[j].focused = (j == window_count - 1);
+                            // Dirty union
+                            uint32_t rx0 = oldr.x < windows[window_count-1].rect.x ? oldr.x : windows[window_count-1].rect.x;
+                            uint32_t ry0 = oldr.y < windows[window_count-1].rect.y ? oldr.y : windows[window_count-1].rect.y;
+                            uint32_t rx1 = (oldr.x + oldr.w) > (windows[window_count-1].rect.x + windows[window_count-1].rect.w)
+                                ? (oldr.x + oldr.w) : (windows[window_count-1].rect.x + windows[window_count-1].rect.w);
+                            uint32_t ry1 = (oldr.y + oldr.h) > (windows[window_count-1].rect.y + windows[window_count-1].rect.h)
+                                ? (oldr.y + oldr.h) : (windows[window_count-1].rect.y + windows[window_count-1].rect.h);
+                            add_dirty(ui::Rect{rx0, ry0, rx1 - rx0, ry1 - ry0});
+                            add_dirty(ui::Rect{0, screen_h - taskbar_h, screen_w, taskbar_h});
+                        } else if (btn == 3) {
+                            // Toggle always_on_top (pin)
+                            windows[i].always_on_top = !windows[i].always_on_top;
+                            // bring to front for interaction consistency
+                            if (static_cast<uint32_t>(i) != window_count - 1) {
+                                ui::window::Window tmp = windows[i];
+                                ui::Rect sr = saved_rects[i];
+                                bool srv = saved_rect_valid[i];
+                                for (uint32_t k = i; k + 1 < window_count; ++k) {
+                                    windows[k] = windows[k+1];
+                                    saved_rects[k] = saved_rects[k+1];
+                                    saved_rect_valid[k] = saved_rect_valid[k+1];
+                                }
+                                windows[window_count - 1] = tmp;
+                                saved_rects[window_count - 1] = sr;
+                                saved_rect_valid[window_count - 1] = srv;
+                            }
+                            for (uint32_t j = 0; j < window_count; ++j) windows[j].focused = (j == window_count - 1);
+                            add_dirty(ui::Rect{windows[window_count - 1].rect.x, windows[window_count - 1].rect.y, windows[window_count - 1].rect.w, windows[window_count - 1].rect.h});
                         }
+                        handled = true;
                         break;
+                    }
+                }
+                if (!handled) {
+                    // Check for titlebar drag
+                    for (int i = static_cast<int>(window_count) - 1; i >= 0; --i) {
+                        if (windows[i].minimized) continue;
+                        if (ui::window::point_in_titlebar(windows[i], cursor.x(), cursor.y())) {
+                            dragging = true;
+                            dragging_index = i;
+                            drag_off_x = cursor.x() - windows[i].rect.x;
+                            drag_off_y = cursor.y() - windows[i].rect.y;
+                            // bring to front if not already
+                            if (static_cast<uint32_t>(i) != window_count - 1) {
+                                ui::window::Window tmp = windows[i];
+                                ui::Rect sr = saved_rects[i];
+                                bool srv = saved_rect_valid[i];
+                                for (uint32_t k = i; k + 1 < window_count; ++k) {
+                                    windows[k] = windows[k+1];
+                                    saved_rects[k] = saved_rects[k+1];
+                                    saved_rect_valid[k] = saved_rect_valid[k+1];
+                                }
+                                windows[window_count - 1] = tmp;
+                                saved_rects[window_count - 1] = sr;
+                                saved_rect_valid[window_count - 1] = srv;
+                                dragging_index = window_count - 1;
+                                add_dirty(ui::Rect{windows[dragging_index].rect.x, windows[dragging_index].rect.y, windows[dragging_index].rect.w, windows[dragging_index].rect.h});
+                            }
+                            for (uint32_t j = 0; j < window_count; ++j) windows[j].focused = (j == static_cast<uint32_t>(dragging_index));
+                            break;
+                        }
                     }
                 }
             }

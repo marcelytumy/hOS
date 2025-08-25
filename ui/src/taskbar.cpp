@@ -11,6 +11,9 @@ static constexpr uint32_t kTaskbarBorder = 0x3A3A3A;
 static constexpr uint32_t kButtonBg = 0x3B3B3B;
 static constexpr uint32_t kButtonBorder = 0x5A5A5A;
 static constexpr uint32_t kButtonText = 0xFFFFFF;
+static constexpr uint32_t kButtonBgFocused = 0x4A4A4A;
+static constexpr uint32_t kButtonBorderFocused = 0x7A7A7A;
+static constexpr uint32_t kButtonTextFocused = 0xFFFFFF;
 
 uint32_t height(uint32_t screen_h) {
 	return (screen_h / 18 < 32 ? 32 : (screen_h / 18 > 64 ? 64 : screen_h / 18));
@@ -35,10 +38,11 @@ void draw(Graphics &gfx, uint32_t screen_w, uint32_t screen_h, const window::Win
 		const char* title = windows[i].title ? windows[i].title : "Window";
 		uint32_t btn_w = 140;
 		if (x + btn_w + 8 > screen_w) break;
-		// Dim if minimized
-		uint32_t bg = windows[i].minimized ? 0x2E2E2E : kButtonBg;
-		uint32_t border = windows[i].minimized ? 0x4A4A4A : kButtonBorder;
-		uint32_t text = windows[i].minimized ? 0xAAAAAA : kButtonText;
+		// Dim if minimized; highlight if focused
+		bool is_focused = windows[i].focused;
+		uint32_t bg = windows[i].minimized ? 0x2E2E2E : (is_focused ? kButtonBgFocused : kButtonBg);
+		uint32_t border = windows[i].minimized ? 0x4A4A4A : (is_focused ? kButtonBorderFocused : kButtonBorder);
+		uint32_t text = windows[i].minimized ? 0xAAAAAA : (is_focused ? kButtonTextFocused : kButtonText);
 		gfx.fill_rect(x, y + 6, btn_w, h - 12, bg);
 		gfx.draw_rect(x, y + 6, btn_w, h - 12, border);
 		gfx.draw_string(title, x + 10, y + (h / 2) - (default_font.char_height / 2), text, default_font);
