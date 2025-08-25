@@ -4,6 +4,8 @@
 #include "graphics.hpp"
 #include "font.hpp"
 #include "../../ui/include/ui.hpp"
+#include "../../ui/include/window.hpp"
+#include "../../ui/include/taskbar.hpp"
 #include "../../ui/include/cursor.hpp"
 #include "../../input/include/mouse.hpp"
 
@@ -195,17 +197,28 @@ extern "C" void kmain() {
     // Compute initial centered window rect
     const uint32_t screen_w = graphics.get_width();
     const uint32_t screen_h = graphics.get_height();
-    const uint32_t taskbar_h = ui::get_taskbar_height(screen_h);
+    const uint32_t taskbar_h = ui::taskbar::height(screen_h);
     const uint32_t usable_h = screen_h - taskbar_h - 20;
     const uint32_t usable_w = screen_w - 40;
     uint32_t win_w = (usable_w * 3) / 5;
     uint32_t win_h = (usable_h * 3) / 5;
     if (win_w < 320) win_w = 320;
     if (win_h < 200) win_h = 200;
-    ui::Rect window_rect{(screen_w - win_w) / 2, (screen_h - taskbar_h - win_h) / 2, win_w, win_h};
+    // Create initial windows
+    ui::window::Window windows[2];
+    windows[0].rect = ui::Rect{(screen_w - win_w) / 2, (screen_h - taskbar_h - win_h) / 2, win_w, win_h};
+    windows[0].title = "Welcome to hOS";
+    windows[0].minimized = false;
+    // Second window (smaller)
+    uint32_t win2_w = win_w / 2; if (win2_w < 280) win2_w = 280;
+    uint32_t win2_h = win_h / 2; if (win2_h < 160) win2_h = 160;
+    windows[1].rect = ui::Rect{windows[0].rect.x + 40, windows[0].rect.y + 40, win2_w, win2_h};
+    windows[1].title = "About";
+    windows[1].minimized = false;
+    uint32_t window_count = 2;
 
-    // Draw desktop with window (to backbuffer), then present
-    ui::draw_desktop(graphics, window_rect);
+    // Draw desktop with windows (to backbuffer), then present
+    ui::draw_desktop(graphics, windows, window_count);
     graphics.present();
 
     // Initialize mouse and cursor
@@ -219,6 +232,7 @@ extern "C" void kmain() {
     bool dragging = false;
     uint32_t drag_off_x = 0;
     uint32_t drag_off_y = 0;
+    int dragging_index = -1;
     bool prev_left = false;
 
     // Simple event loop: poll mouse, move cursor, support window dragging
@@ -228,38 +242,89 @@ extern "C" void kmain() {
             continue;
         }
 
-        // Update cursor position
-        cursor.erase(graphics);
-        cursor.move_by(dx, dy, screen_w, screen_h);
+        // Track whether anything changed that requires a redraw/present
+        bool changed = false;
+        bool cursor_erased = false;
+        const bool cursor_moved = (dx != 0) || (dy != 0);
+        if (cursor_moved) {
+            cursor.erase(graphics);
+            cursor_erased = true;
+            cursor.move_by(dx, dy, screen_w, screen_h);
+            changed = true;
+        }
 
-        // Handle drag begin/end based on left button edge
+        // Handle drag begin/end and taskbar clicks
         if (left && !prev_left) {
-            if (ui::point_in_titlebar(window_rect, cursor.x(), cursor.y())) {
-                dragging = true;
-                drag_off_x = cursor.x() - window_rect.x;
-                drag_off_y = cursor.y() - window_rect.y;
+            // Check taskbar click first
+            uint32_t tb_hit = ui::taskbar::hit_test(cursor.x(), cursor.y(), screen_w, screen_h, windows, window_count);
+            if (tb_hit != UINT32_MAX && tb_hit < window_count) {
+                // Toggle minimize; if restoring, bring to front by moving to end
+                bool was_min = windows[tb_hit].minimized;
+                windows[tb_hit].minimized = !windows[tb_hit].minimized;
+                if (was_min) {
+                    // bring to front
+                    ui::window::Window tmp = windows[tb_hit];
+                    for (uint32_t i = tb_hit; i + 1 < window_count; ++i) windows[i] = windows[i+1];
+                    windows[window_count - 1] = tmp;
+                }
+                changed = true;
+            } else {
+                // Check windows from topmost to bottom for titlebar drag
+                for (int i = static_cast<int>(window_count) - 1; i >= 0; --i) {
+                    if (windows[i].minimized) continue;
+                    if (ui::window::point_in_titlebar(windows[i], cursor.x(), cursor.y())) {
+                        dragging = true;
+                        dragging_index = i;
+                        drag_off_x = cursor.x() - windows[i].rect.x;
+                        drag_off_y = cursor.y() - windows[i].rect.y;
+                        // bring to front if not already
+                        if (static_cast<uint32_t>(i) != window_count - 1) {
+                            ui::window::Window tmp = windows[i];
+                            for (uint32_t k = i; k + 1 < window_count; ++k) windows[k] = windows[k+1];
+                            windows[window_count - 1] = tmp;
+                            dragging_index = window_count - 1;
+                            changed = true; // z-order changed
+                        }
+                        break;
+                    }
+                }
             }
         } else if (!left && prev_left) {
             dragging = false;
+            dragging_index = -1;
         }
 
         // Update window position if dragging
-        if (dragging) {
+        if (dragging && dragging_index >= 0) {
+            ui::window::Window &w = windows[dragging_index];
+            uint32_t old_x = w.rect.x;
+            uint32_t old_y = w.rect.y;
             int64_t new_x = static_cast<int64_t>(cursor.x()) - static_cast<int64_t>(drag_off_x);
             int64_t new_y = static_cast<int64_t>(cursor.y()) - static_cast<int64_t>(drag_off_y);
             if (new_x < 0) new_x = 0;
             if (new_y < 0) new_y = 0;
-            if (new_x > static_cast<int64_t>(screen_w - window_rect.w)) new_x = screen_w - window_rect.w;
-            uint32_t bottom_limit = screen_h - taskbar_h - window_rect.h;
+            if (new_x > static_cast<int64_t>(screen_w - w.rect.w)) new_x = screen_w - w.rect.w;
+            uint32_t bottom_limit = screen_h - taskbar_h - w.rect.h;
             if (new_y > static_cast<int64_t>(bottom_limit)) new_y = bottom_limit;
-            window_rect.x = static_cast<uint32_t>(new_x);
-            window_rect.y = static_cast<uint32_t>(new_y);
+            uint32_t nx = static_cast<uint32_t>(new_x);
+            uint32_t ny = static_cast<uint32_t>(new_y);
+            if (nx != old_x || ny != old_y) {
+                w.rect.x = nx;
+                w.rect.y = ny;
+                changed = true;
+            }
         }
 
-        // Redraw desktop and cursor to backbuffer then present once
-        ui::draw_desktop(graphics, window_rect);
-        cursor.draw(graphics);
-        graphics.present();
+        // If something changed, redraw desktop and cursor, then present once
+        if (changed) {
+            if (!cursor_erased) {
+                // Ensure the saved under-cursor pixel doesn't reflect stale content
+                cursor.erase(graphics);
+            }
+            ui::draw_desktop(graphics, windows, window_count);
+            cursor.draw(graphics);
+            graphics.present();
+        }
 
         prev_left = left;
     }

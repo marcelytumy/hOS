@@ -23,6 +23,11 @@ uint32_t get_taskbar_height(uint32_t screen_h);
 uint32_t get_titlebar_height();
 bool point_in_titlebar(const Rect &window_rect, uint32_t x, uint32_t y);
 
+namespace window { struct Window; }
+
+// Draw desktop with multiple windows; draws taskbar and all non-minimized windows in order
+void draw_desktop(Graphics &gfx, const window::Window* windows, uint32_t count);
+
 }
 
 

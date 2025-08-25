@@ -2,6 +2,8 @@
 #include "graphics.hpp"
 #include "font.hpp"
 #include "../include/ui.hpp"
+#include "../include/window.hpp"
+#include "../include/taskbar.hpp"
 
 namespace ui {
 
@@ -32,33 +34,7 @@ static void draw_taskbar(Graphics &gfx, uint32_t screen_w, uint32_t screen_h) {
 	gfx.draw_string(label, padding + 10, y + (taskbar_h / 2) - (default_font.char_height / 2), kTitleText, default_font);
 }
 
-static void draw_window(Graphics &gfx, uint32_t screen_w, uint32_t screen_h) {
-	const uint32_t taskbar_h = clamp_u32(screen_h / 18, 32, 64);
-	const uint32_t usable_h = screen_h - taskbar_h - 20; // top/bottom margins
-	const uint32_t usable_w = screen_w - 40;             // side margins
-
-	uint32_t win_w = usable_w * 3 / 5;
-	uint32_t win_h = usable_h * 3 / 5;
-	if (win_w < 320) win_w = 320;
-	if (win_h < 200) win_h = 200;
-
-	const uint32_t win_x = (screen_w - win_w) / 2;
-	const uint32_t win_y = (screen_h - taskbar_h - win_h) / 2;
-
-	// Frame
-	gfx.fill_rect(win_x, win_y, win_w, win_h, kWindowBg);
-	gfx.draw_rect(win_x, win_y, win_w, win_h, kWindowBorder);
-
-	// Titlebar
-	const uint32_t title_h = 28;
-	gfx.fill_rect(win_x + 1, win_y + 1, win_w - 2, title_h, kTitlebarBg);
-
-	// Title text
-	gfx.draw_string("Welcome to hOS", win_x + 12, win_y + 6, kTitleText, default_font);
-
-	// Content stub
-	gfx.draw_string("This is a placeholder window.", win_x + 12, win_y + title_h + 12, 0xCCCCCC, default_font);
-}
+// (legacy window drawing helper removed)
 
 void draw_desktop(Graphics &gfx) {
 	const uint32_t screen_w = gfx.get_width();
@@ -126,6 +102,22 @@ void draw_desktop(Graphics &gfx, const Rect &window_rect) {
 
 	// Window at provided rect
 	draw_window_rect(gfx, window_rect);
+}
+
+void draw_desktop(Graphics &gfx, const window::Window* windows, uint32_t count) {
+	const uint32_t screen_w = gfx.get_width();
+	const uint32_t screen_h = gfx.get_height();
+
+	// Background
+	gfx.clear_screen(kDesktopBg);
+
+	// Taskbar
+	taskbar::draw(gfx, screen_w, screen_h, windows, count);
+
+	// Windows
+	for (uint32_t i = 0; i < count; ++i) {
+		window::draw(gfx, windows[i]);
+	}
 }
 
 uint32_t get_taskbar_height(uint32_t screen_h) {
