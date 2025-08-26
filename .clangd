@@ -1,51 +1,53 @@
 CompileFlags:
-  Add:
-    - "-nostdinc"
-    - "-ffreestanding"
-    - "-fno-stack-protector"
-    - "-fno-stack-check"
-    - "-fno-lto"
-    - "-fno-PIC"
-    - "-ffunction-sections"
-    - "-fdata-sections"
-    - "-Wall"
-    - "-Wextra"
-    - "-m64"
-    - "-march=x86-64"
-    - "-mabi=sysv"
-    - "-mno-80387"
-    - "-mno-mmx"
-    - "-mno-sse"
-    - "-mno-sse2"
-    - "-mno-red-zone"
-    - "-mcmodel=kernel"
-    - "-I"
-    - "kernel/src"
-    - "-I"
-    - "kernel/limine-protocol/include"
-    - "-isystem"
-    - "kernel/freestnd-c-hdrs/x86_64/include"
-    - "-isystem"
-    - "kernel/freestnd-cxx-hdrs/x86_64/include"
-    - "-DLIMINE_API_REVISION=3"
-    - "-target"
-    - "x86_64-unknown-none-elf"
+  Add: 
+    - -std=gnu++20
+    - -fno-rtti
+    - -fno-exceptions
+    - -nostdinc
+    - -ffreestanding
+    - -fno-stack-protector
+    - -fno-stack-check
+    - -fno-lto
+    - -fno-PIC
+    - -ffunction-sections
+    - -fdata-sections
+    - -m64
+    - -march=x86-64
+    - -mabi=sysv
+    - -mno-80387
+    - -mno-mmx
+    - -mno-sse
+    - -mno-sse2
+    - -mno-red-zone
+    - -mcmodel=kernel
+    - --target=x86_64-unknown-none-elf
+    - -I/home/ytumy/hos
+    - -I/home/ytumy/hos/kernel/src
+    - -I/home/ytumy/hos/ui/include
+    - -I/home/ytumy/hos/input/include
+    - -I/home/ytumy/hos/kernel/limine-protocol/include
+    - -isystem
+    - /home/ytumy/hos/kernel/freestnd-cxx-hdrs/x86_64/include
+    - -isystem
+    - /home/ytumy/hos/kernel/freestnd-c-hdrs/x86_64/include
+    - -DLIMINE_API_REVISION=3
+    - -D__freestanding__=1
+    - -D__kernel__=1
+    - -D__STDC_HOSTED__=0
+    - -D__STDC_NO_VLA__=1
 
----
-If:
-  PathMatch: [".*\\.cpp$", ".*\\.cc$", ".*\\.cxx$"]
-CompileFlags:
-  Add:
-    - "-std=gnu++20"
-    - "-fno-exceptions"
-    - "-fno-rtti"
+Index:
+  Background: Build
 
----
-If:
-  PathMatch: ".*\\.c$"
-CompileFlags:
-  Add:
-    - "-std=gnu11"
+Diagnostics:
+  ClangTidy:
+    Add: [performance-*, modernize-*, bugprone-*]
+    Remove: [performance-unnecessary-value-param, modernize-use-trailing-return-type]
+
+InlayHints:
+  Enabled: Yes
+  ParameterNames: Yes
+  DeducedTypes: Yes
 
 
 
