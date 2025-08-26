@@ -9,6 +9,7 @@
 #include <cstdint>
 #include <limine.h>
 // FS includes
+#include "apps/finder.hpp"
 #include "fs/blockdev.hpp"
 #include "fs/ext4.hpp"
 
@@ -307,55 +308,15 @@ extern "C" void kmain() {
     }
     static fs::Ext4 s_ext4(s_memdev);
     if (s_ext4.mount()) {
-      struct FileManagerState {
-        fs::Ext4 *fs;
-      } static fm_state{&s_ext4};
-
       if (window_count < 16) {
         ui::window::Window fm{};
-        fm.rect = ui::Rect{40, 40, screen_w / 2, screen_h / 2};
-        fm.title = "Finder";
-        fm.minimized = false;
-        fm.maximized = false;
-        fm.fullscreen = false;
-        fm.resizable = true;
-        fm.movable = true;
-        fm.draggable = true;
-        fm.closeable = true;
-        fm.focused = true;
-        fm.always_on_top = false;
-        fm.user_data = &fm_state;
-        fm.draw_content = [](Graphics &gfx, const ui::Rect &r, void *ud) {
-          auto *st = static_cast<FileManagerState *>(ud);
-          if (!st || !st->fs)
-            return;
-          fs::Dirent ents[64];
-          uint32_t cnt = 0;
-          if (!st->fs->list_dir_by_path("/", ents, 64, cnt))
-            return;
-          const uint32_t row_h = 20;
-          const uint32_t icon_w = 10;
-          uint32_t y = r.y;
-          for (uint32_t i = 0; i < cnt; ++i) {
-            if (y + row_h > r.y + r.h)
-              break;
-            uint32_t name_col =
-                (ents[i].type == fs::NodeType::Directory) ? 0x80FF80 : 0xFFFFFF;
-            uint32_t icon_col =
-                (ents[i].type == fs::NodeType::Directory) ? 0x2E8B57 : 0x4682B4;
-            gfx.fill_rect(r.x, y + 4, icon_w, icon_w, icon_col);
-            gfx.draw_string(ents[i].name, r.x + icon_w + 8, y + 2, name_col,
-                            default_font);
-            y += row_h;
-          }
-        };
-        // Append and focus
-        windows[window_count++] = fm;
-        for (uint32_t j = 0; j < window_count; ++j)
-          windows[j].focused = (j == window_count - 1);
-        // Redraw to show new window
-        ui::draw_desktop(graphics, windows, window_count);
-        graphics.present();
+        if (ui::apps::finder::create_window(screen_w, screen_h, s_ext4, fm)) {
+          windows[window_count++] = fm;
+          for (uint32_t j = 0; j < window_count; ++j)
+            windows[j].focused = (j == window_count - 1);
+          ui::draw_desktop(graphics, windows, window_count);
+          graphics.present();
+        }
       }
     }
   }
