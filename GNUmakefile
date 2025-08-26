@@ -170,6 +170,10 @@ $(IMAGE_NAME).iso: limine/limine kernel
 	cp -v kernel/bin-$(ARCH)/kernel iso_root/boot/
 	mkdir -p iso_root/boot/limine
 	cp -v limine.conf iso_root/boot/limine/
+	# Optionally include a rootfs image if present
+	@if [ -f rootfs.img ]; then \
+	  cp -v rootfs.img iso_root/boot/; \
+	fi
 	mkdir -p iso_root/EFI/BOOT
 ifeq ($(ARCH),x86_64)
 	cp -v limine/limine-bios.sys limine/limine-bios-cd.bin limine/limine-uefi-cd.bin iso_root/boot/limine/
@@ -224,6 +228,10 @@ endif
 	mmd -i $(IMAGE_NAME).hdd@@1M ::/EFI ::/EFI/BOOT ::/boot ::/boot/limine
 	mcopy -i $(IMAGE_NAME).hdd@@1M kernel/bin-$(ARCH)/kernel ::/boot
 	mcopy -i $(IMAGE_NAME).hdd@@1M limine.conf ::/boot/limine
+	# Optionally include a rootfs image if present
+	@if [ -f rootfs.img ]; then \
+	  mcopy -i $(IMAGE_NAME).hdd@@1M rootfs.img ::/boot/; \
+	fi
 ifeq ($(ARCH),x86_64)
 	mcopy -i $(IMAGE_NAME).hdd@@1M limine/limine-bios.sys ::/boot/limine
 	mcopy -i $(IMAGE_NAME).hdd@@1M limine/BOOTX64.EFI ::/EFI/BOOT

@@ -18,6 +18,11 @@ struct Window {
   bool closeable;
   bool focused;
   bool always_on_top;
+  // Optional app draw callback (content area). If null, default placeholder is
+  // drawn.
+  void (*draw_content)(Graphics &gfx, const Rect &content_rect,
+                       void *user_data);
+  void *user_data;
 };
 
 uint32_t get_titlebar_height();
@@ -32,14 +37,15 @@ uint32_t hit_test_button(const Window &w, uint32_t x, uint32_t y);
 
 // Resize hit-test bitmask
 enum ResizeHit : uint32_t {
-  ResizeNone   = 0,
-  ResizeLeft   = 1u << 0,
-  ResizeRight  = 1u << 1,
-  ResizeTop    = 1u << 2,
+  ResizeNone = 0,
+  ResizeLeft = 1u << 0,
+  ResizeRight = 1u << 1,
+  ResizeTop = 1u << 2,
   ResizeBottom = 1u << 3,
 };
 
-// Returns bitmask of edges/corners hovered for resize (combination of Resize* flags)
+// Returns bitmask of edges/corners hovered for resize (combination of Resize*
+// flags)
 uint32_t hit_test_resize(const Window &w, uint32_t x, uint32_t y);
 
 } // namespace window

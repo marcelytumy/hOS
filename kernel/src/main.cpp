@@ -8,6 +8,9 @@
 #include <cstddef>
 #include <cstdint>
 #include <limine.h>
+// FS includes
+#include "fs/blockdev.hpp"
+#include "fs/ext4.hpp"
 
 // Set the base revision to 3, this is recommended as this is the latest
 // base revision described by the Limine boot protocol specification.
@@ -32,7 +35,15 @@ __attribute__((used,
     framebuffer_request = {
         .id = LIMINE_FRAMEBUFFER_REQUEST, .revision = 0, .response = nullptr};
 
-}
+__attribute__((used,
+               section(".limine_requests"))) volatile limine_module_request
+    module_request = {.id = LIMINE_MODULE_REQUEST,
+                      .revision = 0,
+                      .response = nullptr,
+                      .internal_module_count = 0,
+                      .internal_modules = nullptr};
+
+} // namespace
 
 // Finally, define the start and end markers for the Limine requests.
 // These can also be moved anywhere, to any .cpp file, as seen fit.
@@ -209,7 +220,7 @@ extern "C" void kmain() {
   if (win_h < 200)
     win_h = 200;
   // Create initial windows
-  ui::window::Window windows[2];
+  ui::window::Window windows[16];
   windows[0].rect = ui::Rect{(screen_w - win_w) / 2,
                              (screen_h - taskbar_h - win_h) / 2, win_w, win_h};
   windows[0].title = "Welcome to hOS";
@@ -222,6 +233,8 @@ extern "C" void kmain() {
   windows[0].closeable = true;
   windows[0].focused = false;
   windows[0].always_on_top = false;
+  windows[0].draw_content = nullptr;
+  windows[0].user_data = nullptr;
   // Second window (smaller)
   uint32_t win2_w = win_w / 2;
   if (win2_w < 280)
@@ -241,6 +254,8 @@ extern "C" void kmain() {
   windows[1].closeable = true;
   windows[1].focused = true; // topmost initially
   windows[1].always_on_top = false;
+  windows[1].draw_content = nullptr;
+  windows[1].user_data = nullptr;
   uint32_t window_count = 2;
 
   // Saved rects for restore after maximize
@@ -252,6 +267,98 @@ extern "C" void kmain() {
   // Draw desktop with windows (to backbuffer), then present
   ui::draw_desktop(graphics, windows, window_count);
   graphics.present();
+
+  // Try to locate a rootfs module from Limine modules
+  const limine_module_response *mods = module_request.response;
+  const limine_file *rootfs = nullptr;
+  if (mods && mods->module_count > 0) {
+    // Prefer a module tagged with string "rootfs"; otherwise fall back to first
+    // module
+    for (uint64_t i = 0; i < mods->module_count; ++i) {
+      const limine_file *f = mods->modules[i];
+      if (!f || !f->path)
+        continue;
+        // String tag available in API rev >= 3
+#if LIMINE_API_REVISION >= 3
+      if (f->string) {
+        const char *s = f->string;
+        bool match =
+            (s[0] == 'r' && s[1] == 'o' && s[2] == 'o' && s[3] == 't' &&
+             s[4] == 'f' && s[5] == 's' && s[6] == '\0');
+        if (match) {
+          rootfs = f;
+          break;
+        }
+      }
+#endif
+      if (rootfs == nullptr)
+        rootfs = f;
+    }
+  }
+
+  if (rootfs && rootfs->address && rootfs->size > 4096) {
+    // Static lifetime so callbacks can read later
+    static fs::MemoryBlockDevice s_memdev(nullptr, 0);
+    static bool memdev_init = false;
+    if (!memdev_init) {
+      // Reconstruct via simple assignment
+      s_memdev = fs::MemoryBlockDevice(rootfs->address, rootfs->size);
+      memdev_init = true;
+    }
+    static fs::Ext4 s_ext4(s_memdev);
+    if (s_ext4.mount()) {
+      struct FileManagerState {
+        fs::Ext4 *fs;
+      } static fm_state{&s_ext4};
+
+      if (window_count < 16) {
+        ui::window::Window fm{};
+        fm.rect = ui::Rect{40, 40, screen_w / 2, screen_h / 2};
+        fm.title = "Finder";
+        fm.minimized = false;
+        fm.maximized = false;
+        fm.fullscreen = false;
+        fm.resizable = true;
+        fm.movable = true;
+        fm.draggable = true;
+        fm.closeable = true;
+        fm.focused = true;
+        fm.always_on_top = false;
+        fm.user_data = &fm_state;
+        fm.draw_content = [](Graphics &gfx, const ui::Rect &r, void *ud) {
+          auto *st = static_cast<FileManagerState *>(ud);
+          if (!st || !st->fs)
+            return;
+          fs::Dirent ents[64];
+          uint32_t cnt = 0;
+          if (!st->fs->list_dir_by_path("/", ents, 64, cnt))
+            return;
+          const uint32_t row_h = 20;
+          const uint32_t icon_w = 10;
+          uint32_t y = r.y;
+          for (uint32_t i = 0; i < cnt; ++i) {
+            if (y + row_h > r.y + r.h)
+              break;
+            uint32_t name_col =
+                (ents[i].type == fs::NodeType::Directory) ? 0x80FF80 : 0xFFFFFF;
+            uint32_t icon_col =
+                (ents[i].type == fs::NodeType::Directory) ? 0x2E8B57 : 0x4682B4;
+            gfx.fill_rect(r.x, y + 4, icon_w, icon_w, icon_col);
+            gfx.draw_string(ents[i].name, r.x + icon_w + 8, y + 2, name_col,
+                            default_font);
+            y += row_h;
+          }
+        };
+        // Append and focus
+        windows[window_count++] = fm;
+        for (uint32_t j = 0; j < window_count; ++j)
+          windows[j].focused = (j == window_count - 1);
+        // Redraw to show new window
+        ui::draw_desktop(graphics, windows, window_count);
+        graphics.present();
+      }
+    }
+  }
 
   // Initialize mouse and cursor
   input::Ps2Mouse mouse;
