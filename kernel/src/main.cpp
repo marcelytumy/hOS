@@ -9,7 +9,9 @@
 #include <cstdint>
 #include <limine.h>
 // FS includes
+#include "apps/about.hpp"
 #include "apps/finder.hpp"
+#include "apps/welcome.hpp"
 #include "fs/blockdev.hpp"
 #include "fs/ext4.hpp"
 
@@ -222,20 +224,7 @@ extern "C" void kmain() {
     win_h = 200;
   // Create initial windows
   ui::window::Window windows[16];
-  windows[0].rect = ui::Rect{(screen_w - win_w) / 2,
-                             (screen_h - taskbar_h - win_h) / 2, win_w, win_h};
-  windows[0].title = "Welcome to hOS";
-  windows[0].minimized = false;
-  windows[0].maximized = false;
-  windows[0].fullscreen = false;
-  windows[0].resizable = true;
-  windows[0].movable = true;
-  windows[0].draggable = true;
-  windows[0].closeable = true;
-  windows[0].focused = false;
-  windows[0].always_on_top = false;
-  windows[0].draw_content = nullptr;
-  windows[0].user_data = nullptr;
+  ui::apps::welcome::create_window(screen_w, screen_h, windows[0]);
   // Second window (smaller)
   uint32_t win2_w = win_w / 2;
   if (win2_w < 280)
@@ -243,20 +232,7 @@ extern "C" void kmain() {
   uint32_t win2_h = win_h / 2;
   if (win2_h < 160)
     win2_h = 160;
-  windows[1].rect =
-      ui::Rect{windows[0].rect.x + 40, windows[0].rect.y + 40, win2_w, win2_h};
-  windows[1].title = "About";
-  windows[1].minimized = false;
-  windows[1].maximized = false;
-  windows[1].fullscreen = false;
-  windows[1].resizable = true;
-  windows[1].movable = true;
-  windows[1].draggable = true;
-  windows[1].closeable = true;
-  windows[1].focused = true; // topmost initially
-  windows[1].always_on_top = false;
-  windows[1].draw_content = nullptr;
-  windows[1].user_data = nullptr;
+  ui::apps::about::create_window(screen_w, screen_h, windows[0], windows[1]);
   uint32_t window_count = 2;
 
   // Saved rects for restore after maximize
