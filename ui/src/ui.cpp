@@ -178,7 +178,7 @@ void draw_desktop_layer(Graphics &gfx, RenderLayer layer,
     return;
   }
 
-  // RenderLayer::Overlay is currently a no-op placeholder
+  // Overlay layer could draw start menu etc. Currently drawn by callers.
   if (layer == RenderLayer::Cursor) {
     // Cursor is drawn outside of this function by callers currently.
     // Placeholder to keep layer order consistent.

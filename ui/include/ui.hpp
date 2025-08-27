@@ -20,7 +20,7 @@ enum class RenderLayer : uint32_t {
   WindowsFocused = 3,    // focused window in normal layer
   WindowsTop = 4,        // always-on-top windows (non-focused)
   WindowsTopFocused = 5, // focused always-on-top
-  Overlay = 6,           // future overlays (menus, tooltips)
+  Overlay = 6,           // overlays (start menu, menus, tooltips)
   Cursor = 7             // mouse cursor (topmost)
 };
 

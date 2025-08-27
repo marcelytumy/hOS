@@ -1,5 +1,6 @@
 #include "../../input/include/mouse.hpp"
 #include "../../ui/include/cursor.hpp"
+#include "../../ui/include/startmenu.hpp"
 #include "../../ui/include/taskbar.hpp"
 #include "../../ui/include/ui.hpp"
 #include "../../ui/include/window.hpp"
@@ -11,6 +12,7 @@
 // FS includes
 #include "apps/about.hpp"
 #include "apps/finder.hpp"
+#include "apps/start_ids.hpp"
 #include "apps/welcome.hpp"
 #include "fs/blockdev.hpp"
 #include "fs/ext4.hpp"
@@ -243,6 +245,7 @@ extern "C" void kmain() {
 
   // Draw desktop with windows (to backbuffer), then present
   ui::draw_desktop(graphics, windows, window_count);
+  // Draw overlay if any (none at boot)
   graphics.present();
 
   // Try to locate a rootfs module from Limine modules
@@ -305,6 +308,16 @@ extern "C" void kmain() {
   cursor.draw(graphics);
   graphics.present();
 
+  // Start menu state and items
+  static const ui::startmenu::Item kStartItems[] = {
+      {"Welcome", apps::Start_Welcome},
+      {"About", apps::Start_About},
+      {"Finder", apps::Start_Finder},
+  };
+  ui::startmenu::State start_state{};
+  ui::startmenu::init(start_state, screen_w, screen_h, kStartItems,
+                      sizeof(kStartItems) / sizeof(kStartItems[0]));
+
   bool dragging = false;
   bool resizing = false;
   uint32_t resize_mask = 0;
@@ -334,12 +347,16 @@ extern "C" void kmain() {
       cursor.move_by(dx, dy, screen_w, screen_h);
     }
 
-    // Handle drag begin/end and taskbar clicks
+    // Handle drag begin/end, start menu, and taskbar clicks
     if (left && !prev_left) {
-      // Check taskbar click first
+      // Check taskbar click first (includes Start)
       uint32_t tb_hit = ui::taskbar::hit_test(cursor.x(), cursor.y(), screen_w,
                                               screen_h, windows, window_count);
-      if (tb_hit != UINT32_MAX && tb_hit < window_count) {
+      if (tb_hit == ui::taskbar::kHitStart) {
+        // Toggle Start menu
+        start_state.open = !start_state.open;
+        ui_changed = true;
+      } else if (tb_hit != UINT32_MAX && tb_hit < window_count) {
         // Toggle minimize; if restoring, bring to front by moving to end
         bool was_min = windows[tb_hit].minimized;
         windows[tb_hit].minimized = !windows[tb_hit].minimized;
@@ -358,6 +375,52 @@ extern "C" void kmain() {
         add_dirty(ui::Rect{affected.x, affected.y, affected.w, affected.h});
         add_dirty(ui::Rect{0, screen_h - taskbar_h, screen_w, taskbar_h});
       } else {
+        // If Start menu is open, check for menu item clicks or outside close
+        if (start_state.open) {
+          uint32_t sm = ui::startmenu::hit_test_click(start_state, cursor.x(),
+                                                      cursor.y());
+          if (sm == 0xFFFFFFFEu) {
+            start_state.open = false;
+            ui_changed = true;
+          } else if (sm != UINT32_MAX) {
+            // Launch app by id
+            if (sm == apps::Start_Welcome && window_count < 16) {
+              ui::window::Window w{};
+              if (ui::apps::welcome::create_window(screen_w, screen_h, w)) {
+                windows[window_count++] = w;
+              }
+            } else if (sm == apps::Start_About && window_count < 16) {
+              ui::window::Window w{};
+              if (ui::apps::about::create_window(
+                      screen_w, screen_h, windows[window_count - 1], w)) {
+                windows[window_count++] = w;
+              }
+            } else if (sm == apps::Start_Finder && window_count < 16 &&
+                       rootfs && rootfs->address && rootfs->size > 4096) {
+              // Reuse mounted fs if available
+              static fs::MemoryBlockDevice s_memdev2(nullptr, 0);
+              static fs::Ext4 s_ext4_2(s_memdev2);
+              static bool init2 = false;
+              if (!init2) {
+                s_memdev2 =
+                    fs::MemoryBlockDevice(rootfs->address, rootfs->size);
+                init2 = s_ext4_2.mount();
+              }
+              if (init2) {
+                ui::window::Window fm{};
+                if (ui::apps::finder::create_window(screen_w, screen_h,
+                                                    s_ext4_2, fm)) {
+                  windows[window_count++] = fm;
+                }
+              }
+            }
+            // Focus the newly created window
+            for (uint32_t j = 0; j < window_count; ++j)
+              windows[j].focused = (j == window_count - 1);
+            start_state.open = false;
+            ui_changed = true;
+          }
+        }
         // Click on windows from topmost to bottom: handle buttons first, then
         // drag
         bool handled = false;
@@ -666,10 +729,17 @@ extern "C" void kmain() {
     if (ui_changed) {
       // Full scene redraw invalidates cursor underlay cache
       ui::draw_desktop(graphics, windows, window_count);
+      if (start_state.open) {
+        ui::startmenu::draw(graphics, start_state);
+      }
       cursor.invalidate();
       cursor.draw(graphics);
       graphics.present();
     } else if (cursor_moved) {
+      if (start_state.open) {
+        ui::startmenu::update_hover(start_state, cursor.x(), cursor.y());
+        ui::startmenu::draw(graphics, start_state);
+      }
       cursor.draw(graphics);
       graphics.present();
     }

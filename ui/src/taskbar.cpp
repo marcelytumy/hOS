@@ -5,8 +5,7 @@
 #include "font.hpp"
 #include "graphics.hpp"
 
-namespace ui {
-namespace taskbar {
+namespace ui::taskbar {
 
 static constexpr uint32_t kTaskbarBg = 0x2B2B2B;
 static constexpr uint32_t kTaskbarBorder = 0x3A3A3A;
@@ -151,7 +150,7 @@ uint32_t hit_test(uint32_t px, uint32_t py, uint32_t screen_w,
   uint32_t x = 8; // start button
   const uint32_t start_w = 80;
   if (px >= x && px < x + start_w && py >= y + 6 && py < y + 6 + (h - 12))
-    return UINT32_MAX;
+    return kHitStart;
   x += start_w + 8;
 
   // Exclude right-side date/time area from hit testing
@@ -179,5 +178,4 @@ uint32_t hit_test(uint32_t px, uint32_t py, uint32_t screen_w,
   return UINT32_MAX;
 }
 
-} // namespace taskbar
-} // namespace ui
+} // namespace ui::taskbar
