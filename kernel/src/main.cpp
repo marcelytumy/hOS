@@ -323,49 +323,15 @@ extern "C" void kmain() {
       continue;
     }
 
-    // Track dirty regions for partial redraw/present
+    // Track if UI changed this frame; drop region rendering entirely
     bool ui_changed = false;
-    ui::Rect ui_dirty{0, 0, 0, 0};
-    auto add_dirty = [&](const ui::Rect &r) {
-      if (r.w == 0 || r.h == 0)
-        return;
-      if (ui_dirty.w == 0 || ui_dirty.h == 0) {
-        ui_dirty = r;
-      } else {
-        uint32_t x0 = ui_dirty.x < r.x ? ui_dirty.x : r.x;
-        uint32_t y0 = ui_dirty.y < r.y ? ui_dirty.y : r.y;
-        uint32_t x1a = ui_dirty.x + ui_dirty.w;
-        uint32_t y1a = ui_dirty.y + ui_dirty.h;
-        uint32_t x1b = r.x + r.w;
-        uint32_t y1b = r.y + r.h;
-        uint32_t x1 = x1a > x1b ? x1a : x1b;
-        uint32_t y1 = y1a > y1b ? y1a : y1b;
-        ui_dirty.x = x0;
-        ui_dirty.y = y0;
-        ui_dirty.w = x1 - x0;
-        ui_dirty.h = y1 - y0;
-      }
-      ui_changed = true;
-    };
+    auto add_dirty = [&](const ui::Rect &) { ui_changed = true; };
 
-    bool cursor_erased = false;
-    ui::Rect cursor_dirty{0, 0, 0, 0};
     const bool cursor_moved = (dx != 0) || (dy != 0);
-    uint32_t prev_cx = cursor.x();
-    uint32_t prev_cy = cursor.y();
     if (cursor_moved) {
+      // Restore background under old cursor before any updates
       cursor.erase(graphics);
-      cursor_erased = true;
       cursor.move_by(dx, dy, screen_w, screen_h);
-      // Dirty rect covering old and new cursor pixels
-      uint32_t x0 = prev_cx < cursor.x() ? prev_cx : cursor.x();
-      uint32_t y0 = prev_cy < cursor.y() ? prev_cy : cursor.y();
-      uint32_t x1 = (prev_cx > cursor.x() ? prev_cx : cursor.x()) + 1;
-      uint32_t y1 = (prev_cy > cursor.y() ? prev_cy : cursor.y()) + 1;
-      cursor_dirty.x = x0;
-      cursor_dirty.y = y0;
-      cursor_dirty.w = x1 - x0;
-      cursor_dirty.h = y1 - y0;
     }
 
     // Handle drag begin/end and taskbar clicks
@@ -586,7 +552,6 @@ extern "C" void kmain() {
       // trigger a full redraw so the window contents are rendered.
       if (perf_border_only && (was_dragging || was_resizing)) {
         ui_changed = true;
-        ui_dirty = ui::Rect{0, 0, screen_w, screen_h};
       }
     }
 
@@ -697,55 +662,16 @@ extern "C" void kmain() {
       }
     }
 
-    // If UI changed, ensure cursor underlay is accurate before redraw
-    if (ui_changed && !cursor_erased) {
-      cursor.erase(graphics);
-      cursor_erased = true;
-    }
-
-    // Redraw only the UI dirty region if needed
+    // Present: prefer minimal redraw on cursor-only movement
     if (ui_changed) {
-      if ((dragging || resizing) && perf_border_only) {
-        ui::draw_desktop_region_frames_only(graphics, windows, window_count,
-                                            ui_dirty);
-      } else {
-        ui::draw_desktop_region(graphics, windows, window_count, ui_dirty);
-      }
-    }
-
-    // Redraw cursor if it moved or UI changed underneath
-    if (cursor_erased) {
+      // Full scene redraw invalidates cursor underlay cache
+      ui::draw_desktop(graphics, windows, window_count);
+      cursor.invalidate();
       cursor.draw(graphics);
-    }
-
-    // Present only the union of dirty regions
-    if (ui_changed || cursor_moved) {
-      // Union ui_dirty and cursor_dirty
-      ui::Rect present_rect = ui_dirty;
-      if (cursor_moved) {
-        if (present_rect.w == 0 || present_rect.h == 0) {
-          present_rect = cursor_dirty;
-        } else {
-          uint32_t x0 =
-              present_rect.x < cursor_dirty.x ? present_rect.x : cursor_dirty.x;
-          uint32_t y0 =
-              present_rect.y < cursor_dirty.y ? present_rect.y : cursor_dirty.y;
-          uint32_t x1a = present_rect.x + present_rect.w;
-          uint32_t y1a = present_rect.y + present_rect.h;
-          uint32_t x1b = cursor_dirty.x + cursor_dirty.w;
-          uint32_t y1b = cursor_dirty.y + cursor_dirty.h;
-          uint32_t x1 = x1a > x1b ? x1a : x1b;
-          uint32_t y1 = y1a > y1b ? y1a : y1b;
-          present_rect.x = x0;
-          present_rect.y = y0;
-          present_rect.w = x1 - x0;
-          present_rect.h = y1 - y0;
-        }
-      }
-      if (present_rect.w != 0 && present_rect.h != 0) {
-        graphics.present_rect(present_rect.x, present_rect.y, present_rect.w,
-                              present_rect.h);
-      }
+      graphics.present();
+    } else if (cursor_moved) {
+      cursor.draw(graphics);
+      graphics.present();
     }
 
     prev_left = left;
