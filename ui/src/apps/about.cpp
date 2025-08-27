@@ -2,9 +2,7 @@
 #include "font.hpp"
 #include "graphics.hpp"
 
-namespace ui {
-namespace apps {
-namespace about {
+namespace ui::apps::about {
 
 static void draw(Graphics &gfx, const ui::Rect &r, void * /*ud*/) {
   gfx.draw_string("About hOS", r.x, r.y, 0xFFFFFF, default_font);
@@ -44,6 +42,4 @@ bool create_window(uint32_t screen_w, uint32_t screen_h,
   return true;
 }
 
-} // namespace about
-} // namespace apps
-} // namespace ui
+} // namespace ui::apps::about

@@ -2,9 +2,7 @@
 #include "font.hpp"
 #include "graphics.hpp"
 
-namespace ui {
-namespace apps {
-namespace welcome {
+namespace ui::apps::welcome {
 
 static void draw(Graphics &gfx, const ui::Rect &r, void * /*ud*/) {
   gfx.draw_string("This is a placeholder window.", r.x, r.y, 0xCCCCCC,
@@ -45,6 +43,4 @@ bool create_window(uint32_t screen_w, uint32_t screen_h,
   return true;
 }
 
-} // namespace welcome
-} // namespace apps
-} // namespace ui
+} // namespace ui::apps::welcome

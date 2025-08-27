@@ -2,9 +2,7 @@
 #include "font.hpp"
 #include "graphics.hpp"
 
-namespace ui {
-namespace apps {
-namespace finder {
+namespace ui::apps::finder {
 
 static void draw(Graphics &gfx, const ui::Rect &r, void *ud) {
   FinderState *st = static_cast<FinderState *>(ud);
@@ -54,6 +52,4 @@ bool create_window(uint32_t screen_w, uint32_t screen_h, fs::Ext4 &filesystem,
   return true;
 }
 
-} // namespace finder
-} // namespace apps
-} // namespace ui
+} // namespace ui::apps::finder
