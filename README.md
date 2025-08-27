@@ -1,44 +1,61 @@
-# Limine C++ Template
+## hOS
 
-This repository will demonstrate how to set up a basic kernel in C++ using Limine.
+Minimal hobby operating system that boots with Limine and is written in C++.
 
-## How to use this?
+### Quick start
 
-### Dependencies
-
-Any `make` command depends on GNU make (`gmake`) and is expected to be run using it. This usually means using `make` on most GNU/Linux distros, or `gmake` on other non-GNU systems.
-
-It is recommended to build this project using a standard UNIX-like system, using a Clang/LLVM toolchain capable of cross compilation.
-
-Additionally, building an ISO with `make all` requires `xorriso`, and building a HDD/USB image with `make all-hdd` requires `sgdisk` (usually from `gdisk` or `gptfdisk` packages) and `mtools`.
-
-### Toolchain selection
-
-The `TOOLCHAIN` and `TOOLCHAIN_PREFIX` `make` variables can be used to set the toolchain. `TOOLCHAIN` can be set to `llvm` to use Clang/LLVM.
-
-For example:
+1) Fetch kernel-side headers and runtime:
+```bash
+./kernel/get-deps
 ```
-make TOOLCHAIN=llvm
-```
-or:
-```
-make TOOLCHAIN_PREFIX=x86_64-elf-
+2) Build and run in QEMU (x86_64 by default):
+```bash
+make TOOLCHAIN=llvm run
 ```
 
-### Architectural targets
+### Prerequisites
 
-The `ARCH` make variable determines the target architecture to build the kernel and image for.
+- **Build tools**: GNU `make`, Clang/LLVM (recommended) or GCC, `git`, `curl`.
+- **ISO/HDD tooling**: `xorriso` (ISO), `sgdisk` and `mtools` (HDD).
+- **Emulator**: `qemu-system-<arch>` (OVMF firmware is downloaded automatically).
 
-The default `ARCH` is `x86_64`. Other options include: `aarch64`, `loongarch64`, and `riscv64`.
+### Build and run
 
-### Makefile targets
+- **Select toolchain**:
+  - `TOOLCHAIN=llvm` to use Clang/LLVM, or set a prefix via `TOOLCHAIN_PREFIX` (e.g. `x86_64-elf-`).
+- **Select architecture**:
+  - `ARCH=x86_64` (default), `aarch64`, `riscv64`, `loongarch64`.
+- **Targets**:
+  - `make all` → build kernel and ISO
+  - `make run` → build and boot ISO in QEMU
+  - `make all-hdd` → build kernel and raw HDD image
+  - `make run-hdd` or `make dev-run` → build and boot HDD image in QEMU
 
-Running `make all` will compile the kernel (from the `kernel/` directory) and then generate a bootable ISO image.
+Examples:
+```bash
+make TOOLCHAIN=llvm ARCH=x86_64 run
+make TOOLCHAIN=llvm ARCH=aarch64 run
+```
 
-Running `make all-hdd` will compile the kernel and then generate a raw image suitable to be flashed onto a USB stick or hard drive/SSD.
+### Optional root filesystem
 
-Running `make run` will build the kernel and a bootable ISO (equivalent to make all) and then run it using `qemu` (if installed).
+If a `rootfs.img` file is present in the project root, it is automatically bundled as a boot module into the ISO/HDD images.
 
-Running `make run-hdd` will build the kernel and a raw HDD image (equivalent to make all-hdd) and then run it using `qemu` (if installed).
+### Project layout
 
-For x86_64, the `run-bios` and `run-hdd-bios` targets are equivalent to their non `-bios` counterparts except that they boot `qemu` using the default SeaBIOS firmware instead of OVMF.
+- **kernel/**: core kernel sources, basic filesystems, low-level platform glue.
+- **ui/**: minimal immediate-mode UI and example applications.
+- **input/**: basic input handling used by the UI.
+- **limine/**, **ovmf/**: fetched at build time by the makefiles.
+
+### Roadmap (high-level)
+
+- **Filesystem**: richer EXT4 support, path resolution, symlinks, and robust I/O.
+- **Process model**: tasks/threads, scheduling, and messaging primitives.
+- **Memory**: paging, virtual memory management, and safer allocators.
+- **Drivers**: storage, timers, input beyond legacy devices, and basic PCI.
+- **Graphics/UI**: damage tracking, text input, widgets, and window management QoL.
+
+### License
+
+See `LICENSE` for licensing information.
