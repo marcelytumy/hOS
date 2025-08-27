@@ -6,6 +6,17 @@ class Graphics;
 namespace ui {
 namespace window {
 
+struct MouseEvent {
+  enum class Type : uint32_t { Down = 0, Up = 1, Move = 2 };
+  Type type;
+  // Position relative to the window content rect (not including frame/padding)
+  uint32_t x;
+  uint32_t y;
+  bool left;
+  bool right;
+  bool middle;
+};
+
 struct Window {
   Rect rect;
   const char *title;
@@ -22,6 +33,9 @@ struct Window {
   // drawn.
   void (*draw_content)(Graphics &gfx, const Rect &content_rect,
                        void *user_data);
+  // Optional mouse event handler for content area. Coordinates are relative to
+  // content_rect origin (passed above to draw_content).
+  void (*on_mouse)(const MouseEvent &ev, void *user_data);
   void *user_data;
 };
 
@@ -47,6 +61,11 @@ enum ResizeHit : uint32_t {
 // Returns bitmask of edges/corners hovered for resize (combination of Resize*
 // flags)
 uint32_t hit_test_resize(const Window &w, uint32_t x, uint32_t y);
+
+// Compute the content rect for a window as drawn by draw(), taking into
+// account fullscreen/maximized states and taskbar height. screen_w/h are the
+// framebuffer dimensions used for layout.
+Rect get_content_rect(const Window &w, uint32_t screen_w, uint32_t screen_h);
 
 } // namespace window
 } // namespace ui

@@ -90,62 +90,165 @@ bool Ext4::list_dir_by_path(const char *path, Dirent *entries,
   out_count = 0;
   if (!mounted_)
     return false;
-  if (!path || path[0] == '\0' || (path[0] == '/' && path[1] == '\0')) {
+  // Helper lambdas that can access private members via 'this'
+  auto read_inode = [&](uint64_t inode_num, InodeRaw &out) -> bool {
+    uint64_t group = (inode_num - 1) / inodes_per_group_;
+    uint64_t index_in_group = (inode_num - 1) % inodes_per_group_;
+    uint64_t gdt_block = (block_size_ == 1024u) ? 2u : 1u;
+    uint64_t gdt_offset =
+        mul_u32_u32(static_cast<uint32_t>(gdt_block), block_size_) +
+        group * static_cast<uint64_t>(sizeof(GdDesc));
+    GdDesc gd{};
+    if (!dev_.read(gdt_offset, sizeof(GdDesc), &gd))
+      return false;
+    uint64_t inode_table_block = gd.bg_inode_table;
+    uint64_t inode_offset =
+        mul_u32_u32(static_cast<uint32_t>(inode_table_block), block_size_) +
+        index_in_group * inode_size_;
+    uint8_t inode_buf[512];
+    if (inode_size_ > sizeof(inode_buf))
+      return false;
+    if (!dev_.read(inode_offset, inode_size_, inode_buf))
+      return false;
+    out = *reinterpret_cast<const InodeRaw *>(inode_buf);
+    return true;
+  };
+
+  auto scan_dir_for = [&](const InodeRaw &dir_inode, const char *name,
+                          uint32_t name_len, uint64_t &out_inode,
+                          uint8_t &out_type) -> bool {
+    const uint16_t S_IFDIR = 0x4000;
+    if ((dir_inode.i_mode & S_IFDIR) == 0)
+      return false;
+    const ExtentHeader *eh =
+        reinterpret_cast<const ExtentHeader *>(dir_inode.i_block);
+    const uint16_t EXT4_EXT_MAGIC = 0xF30A;
+    uint8_t block_buf[4096];
+    auto scan_block = [&](const uint8_t *blk_data) {
+      uint32_t offset = 0;
+      while (offset + 8 <= block_size_) {
+        const DirEnt2 *de =
+            reinterpret_cast<const DirEnt2 *>(blk_data + offset);
+        if (de->rec_len < 8 || de->rec_len == 0 ||
+            offset + de->rec_len > block_size_)
+          break;
+        if (de->inode != 0 && de->name_len == name_len && name_len < 64) {
+          bool match = true;
+          for (uint32_t i = 0; i < name_len; ++i) {
+            if (reinterpret_cast<const char *>(de + 1)[i] != name[i]) {
+              match = false;
+              break;
+            }
+          }
+          if (match) {
+            out_inode = de->inode;
+            out_type = de->file_type;
+            return true;
+          }
+        }
+        offset += de->rec_len;
+      }
+      return false;
+    };
+    if (eh->eh_magic == EXT4_EXT_MAGIC) {
+      if (eh->eh_depth != 0)
+        return false;
+      const ExtentLeaf *exts = reinterpret_cast<const ExtentLeaf *>(eh + 1);
+      uint16_t n = eh->eh_entries;
+      for (uint16_t i = 0; i < n; ++i) {
+        uint64_t phys = (static_cast<uint64_t>(exts[i].ee_start_hi) << 32) |
+                        static_cast<uint64_t>(exts[i].ee_start_lo);
+        uint32_t count = exts[i].ee_len & 0x7FFFu;
+        for (uint32_t b = 0; b < count; ++b) {
+          uint64_t blk = phys + b;
+          if (!dev_.read(mul_u32_u32(static_cast<uint32_t>(blk), block_size_),
+                         block_size_, block_buf))
+            return false;
+          if (scan_block(block_buf))
+            return true;
+        }
+      }
+      return false;
+    }
+    for (uint32_t i = 0; i < 12; ++i) {
+      uint32_t blk = dir_inode.i_block[i];
+      if (blk == 0)
+        continue;
+      if (!dev_.read(mul_u32_u32(blk, block_size_), block_size_, block_buf))
+        return false;
+      if (scan_block(block_buf))
+        return true;
+    }
+    return false;
+  };
+
+  // Resolve path to an inode number
+  uint64_t cur_inode = 2; // root
+  uint8_t cur_type = 2;   // directory
+  const char *p = path;
+  if (!p || p[0] == '\0') {
+    // stay at root
   } else {
-    return false;
+    if (*p == '/')
+      ++p;
+    while (*p) {
+      char name_buf[64];
+      uint32_t len = 0;
+      while (*p && *p != '/' && len + 1 < sizeof(name_buf))
+        name_buf[len++] = *p++;
+      name_buf[len] = '\0';
+      if (len == 0) {
+        if (*p == '/') {
+          ++p;
+          continue;
+        }
+        break;
+      }
+      // Handle '.' and '..' trivially (".." not implemented fully; treat as
+      // root)
+      if (len == 1 && name_buf[0] == '.') {
+        // no-op
+      } else if (len == 2 && name_buf[0] == '.' && name_buf[1] == '.') {
+        cur_inode = 2;
+        cur_type = 2; // simplistic up-to-root
+      } else {
+        InodeRaw dir_inode{};
+        if (!read_inode(cur_inode, dir_inode))
+          return false;
+        uint64_t next_inode = 0;
+        uint8_t next_type = 0;
+        if (!scan_dir_for(dir_inode, name_buf, len, next_inode, next_type))
+          return false;
+        cur_inode = next_inode;
+        cur_type = next_type;
+      }
+      if (*p == '/')
+        ++p;
+    }
   }
 
-  const uint64_t inode_num = 2;
-  uint64_t group = (inode_num - 1) / inodes_per_group_;
-  uint64_t index_in_group = (inode_num - 1) % inodes_per_group_;
-
-  uint64_t gdt_block = (block_size_ == 1024u) ? 2u : 1u;
-  uint64_t gdt_offset =
-      mul_u32_u32(static_cast<uint32_t>(gdt_block), block_size_) +
-      group * static_cast<uint64_t>(sizeof(GdDesc));
-
-  GdDesc gd{};
-  if (!dev_.read(gdt_offset, sizeof(GdDesc), &gd)) {
+  // Only list directories
+  if (cur_type != 2)
     return false;
-  }
 
-  uint64_t inode_table_block = gd.bg_inode_table;
-  uint64_t inode_offset =
-      mul_u32_u32(static_cast<uint32_t>(inode_table_block), block_size_) +
-      index_in_group * inode_size_;
-
-  uint8_t inode_buf[512];
-  if (inode_size_ > sizeof(inode_buf)) {
+  // Now enumerate the directory entries
+  InodeRaw inode{};
+  if (!read_inode(cur_inode, inode))
     return false;
-  }
-  if (!dev_.read(inode_offset, inode_size_, inode_buf)) {
-    return false;
-  }
-  const InodeRaw &inode = *reinterpret_cast<const InodeRaw *>(inode_buf);
-
-  const uint16_t S_IFDIR = 0x4000;
-  if ((inode.i_mode & S_IFDIR) == 0) {
-    return false;
-  }
-
-  auto parse_dir_block = [&](const uint8_t *blk_data) {
+  auto emit_dir_block = [&](const uint8_t *blk_data) {
     uint32_t offset = 0;
     while (offset + 8 <= block_size_) {
       const DirEnt2 *de = reinterpret_cast<const DirEnt2 *>(blk_data + offset);
-      if (de->rec_len < 8)
-        break;
-      if (de->rec_len == 0)
-        break;
-      if (offset + de->rec_len > block_size_)
+      if (de->rec_len < 8 || de->rec_len == 0 ||
+          offset + de->rec_len > block_size_)
         break;
       if (de->inode != 0 && de->name_len > 0) {
         if (out_count < max_entries) {
           static char names_bank[128][64];
           if (de->name_len < 64) {
-            for (uint32_t i = 0; i < de->name_len; ++i) {
+            for (uint32_t i = 0; i < de->name_len; ++i)
               names_bank[out_count][i] =
                   reinterpret_cast<const char *>(de + 1)[i];
-            }
             names_bank[out_count][de->name_len] = '\0';
             entries[out_count].name = names_bank[out_count];
             entries[out_count].name_len = de->name_len;
@@ -161,15 +264,13 @@ bool Ext4::list_dir_by_path(const char *path, Dirent *entries,
       offset += de->rec_len;
     }
   };
-
   const ExtentHeader *eh =
       reinterpret_cast<const ExtentHeader *>(inode.i_block);
   const uint16_t EXT4_EXT_MAGIC = 0xF30A;
   uint8_t block_buf[4096];
   if (eh->eh_magic == EXT4_EXT_MAGIC) {
-    if (eh->eh_depth != 0) {
+    if (eh->eh_depth != 0)
       return false;
-    }
     const ExtentLeaf *exts = reinterpret_cast<const ExtentLeaf *>(eh + 1);
     uint16_t n = eh->eh_entries;
     for (uint16_t i = 0; i < n; ++i) {
@@ -179,25 +280,22 @@ bool Ext4::list_dir_by_path(const char *path, Dirent *entries,
       for (uint32_t b = 0; b < count; ++b) {
         uint64_t blk = phys + b;
         if (!dev_.read(mul_u32_u32(static_cast<uint32_t>(blk), block_size_),
-                       block_size_, block_buf)) {
+                       block_size_, block_buf))
           return false;
-        }
-        parse_dir_block(block_buf);
+        emit_dir_block(block_buf);
         if (out_count >= max_entries)
           return true;
       }
     }
     return true;
   }
-
   for (uint32_t i = 0; i < 12; ++i) {
     uint32_t blk = inode.i_block[i];
     if (blk == 0)
       continue;
-    if (!dev_.read(mul_u32_u32(blk, block_size_), block_size_, block_buf)) {
+    if (!dev_.read(mul_u32_u32(blk, block_size_), block_size_, block_buf))
       return false;
-    }
-    parse_dir_block(block_buf);
+    emit_dir_block(block_buf);
     if (out_count >= max_entries)
       return true;
   }

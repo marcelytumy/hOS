@@ -262,5 +262,33 @@ uint32_t hit_test_resize(const Window &w, uint32_t x, uint32_t y) {
   return mask;
 }
 
+Rect get_content_rect(const Window &w, uint32_t screen_w, uint32_t screen_h) {
+  (void)screen_w;
+  (void)screen_h;
+  if (w.minimized) {
+    return Rect{0, 0, 0, 0};
+  }
+  // Recompute effective window rect similar to draw()
+  uint32_t rx = w.rect.x;
+  uint32_t ry = w.rect.y;
+  uint32_t rw = w.rect.w;
+  uint32_t rh = w.rect.h;
+  if (w.fullscreen) {
+    rx = 0;
+    ry = 0;
+    rw = screen_w;
+    rh = screen_h;
+  } else if (w.maximized) {
+    rx = 0;
+    ry = 0;
+    rw = screen_w;
+    rh = screen_h - ui::taskbar::height(screen_h);
+  }
+  const uint32_t th = get_titlebar_height();
+  Rect r{rx + 8, ry + th + 8, (rw > 16 ? rw - 16 : 0),
+         (rh > th + 16 ? rh - th - 16 : 0)};
+  return r;
+}
+
 } // namespace window
 } // namespace ui
