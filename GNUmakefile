@@ -44,6 +44,14 @@ run-hdd-x86_64: ovmf/ovmf-code-$(ARCH).fd $(IMAGE_NAME).hdd
 		-hda $(IMAGE_NAME).hdd \
 		$(QEMUFLAGS)
 
+.PHONY: dev-run
+dev-run: ovmf/ovmf-code-$(ARCH).fd $(IMAGE_NAME).hdd
+	qemu-system-$(ARCH) \
+		-M q35 \
+		-drive if=pflash,unit=0,format=raw,file=ovmf/ovmf-code-$(ARCH).fd,readonly=on \
+		-hda $(IMAGE_NAME).hdd \
+		$(QEMUFLAGS)
+
 .PHONY: run-aarch64
 run-aarch64: ovmf/ovmf-code-$(ARCH).fd $(IMAGE_NAME).iso
 	qemu-system-$(ARCH) \
