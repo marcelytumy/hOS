@@ -5,9 +5,7 @@
 #include "window.hpp"
 #include <cstdint>
 
-namespace ui {
-namespace apps {
-namespace finder {
+namespace ui::apps::finder {
 
 struct FinderState {
   fs::Ext4 *fs;
@@ -23,6 +21,9 @@ struct FinderState {
   uint32_t last_mouse_y;
   uint32_t press_x;
   uint32_t press_y;
+  // File opening support
+  char file_to_open[256];
+  bool should_open_file;
 };
 
 // Populate a Finder window configured to list the root directory of the given
@@ -30,6 +31,4 @@ struct FinderState {
 ui::window::Window create_window(uint32_t screen_w, uint32_t screen_h,
                                  fs::Ext4 &filesystem);
 
-} // namespace finder
-} // namespace apps
-} // namespace ui
+} // namespace ui::apps::finder

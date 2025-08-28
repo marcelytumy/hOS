@@ -1,6 +1,7 @@
 #include "apps/about.hpp"
 #include "font.hpp"
 #include "graphics.hpp"
+#include "window_manager.hpp"
 
 namespace ui::apps::about {
 

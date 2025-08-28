@@ -126,6 +126,62 @@ static void open_selected(FinderState *st) {
     st->cwd_buf[m] = '\0';
     st->cwd = st->cwd_buf;
     st->selected_index = -1;
+  } else if (e.type == fs::NodeType::File) {
+    // Handle file opening - check file extension
+    bool is_text_file = false;
+    const char *ext = nullptr;
+
+    // Find file extension
+    for (uint32_t i = 0; e.name[i]; ++i) {
+      if (e.name[i] == '.') {
+        ext = &e.name[i + 1];
+      }
+    }
+
+    if (ext) {
+      // Check for text file extensions
+      if ((ext[0] == 't' && ext[1] == 'x' && ext[2] == 't' && ext[3] == '\0') ||
+          (ext[0] == 'h' && ext[1] == 'o' && ext[2] == 's' && ext[3] == '-' &&
+           ext[4] == 'r' && ext[5] == 'e' && ext[6] == 'g' && ext[7] == 'i' &&
+           ext[8] == 's' && ext[9] == 't' && ext[10] == 'r' && ext[11] == 'y' &&
+           ext[12] == '\0')) {
+        is_text_file = true;
+      }
+    } else {
+      // If no extension, treat as text file (for files created with nano)
+      is_text_file = true;
+    }
+
+    if (is_text_file) {
+      // Build full file path
+      char file_path[256];
+      uint32_t n = 0;
+      const char *cwd = st->cwd ? st->cwd : "/";
+      if (cwd[0] != '/' || cwd[1] != '\0') {
+        // non-root
+        for (; cwd[n] && n < sizeof(file_path) - 1; ++n)
+          file_path[n] = cwd[n];
+        if (n < sizeof(file_path) - 1 && file_path[n - 1] != '/')
+          file_path[n++] = '/';
+      } else {
+        file_path[n++] = '/';
+      }
+      // copy entry name
+      for (uint32_t i = 0; e.name[i] && n < sizeof(file_path) - 1; ++i)
+        file_path[n++] = e.name[i];
+      file_path[n] = '\0';
+
+      // Store the file path for the text viewer to use
+      // This will be handled by the main loop when it detects a text file open
+      // request
+      uint32_t path_len = 0;
+      for (; file_path[path_len] && path_len < sizeof(st->file_to_open) - 1;
+           ++path_len) {
+        st->file_to_open[path_len] = file_path[path_len];
+      }
+      st->file_to_open[path_len] = '\0';
+      st->should_open_file = true;
+    }
   }
 }
 
@@ -217,6 +273,8 @@ ui::window::Window create_window(uint32_t screen_w, uint32_t screen_h,
   s_state.last_mouse_y = 0;
   s_state.press_x = 0;
   s_state.press_y = 0;
+  s_state.file_to_open[0] = '\0';
+  s_state.should_open_file = false;
 
   ui::window_manager::WindowOptions options;
   options.title = "Finder";

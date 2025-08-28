@@ -8,6 +8,7 @@
 #include "apps/about.hpp"
 #include "apps/finder.hpp"
 #include "apps/start_ids.hpp"
+#include "apps/textviewer.hpp"
 #include "apps/welcome.hpp"
 #include "font.hpp"
 #include "fs/blockdev.hpp"
@@ -317,6 +318,7 @@ extern "C" void kmain() {
       {"Welcome", apps::Start_Welcome},
       {"About", apps::Start_About},
       {"Finder", apps::Start_Finder},
+      {"Text Viewer", apps::Start_TextViewer},
   };
   ui::startmenu::State start_state{};
   ui::startmenu::init(start_state, screen_w, screen_h, kStartItems,
@@ -409,6 +411,21 @@ extern "C" void kmain() {
               if (init2) {
                 windows[window_count++] = ui::apps::finder::create_window(
                     screen_w, screen_h, s_ext4_2);
+              }
+            } else if (sm == apps::Start_TextViewer && window_count < 16 &&
+                       rootfs && rootfs->address && rootfs->size > 4096) {
+              // Reuse mounted fs if available
+              static fs::MemoryBlockDevice s_memdev3(nullptr, 0);
+              static fs::Ext4 s_ext4_3(s_memdev3);
+              static bool init3 = false;
+              if (!init3) {
+                s_memdev3 =
+                    fs::MemoryBlockDevice(rootfs->address, rootfs->size);
+                init3 = s_ext4_3.mount();
+              }
+              if (init3) {
+                windows[window_count++] = ui::apps::textviewer::create_window(
+                    screen_w, screen_h, s_ext4_3, nullptr);
               }
             }
             // Focus the newly created window
@@ -720,6 +737,56 @@ extern "C" void kmain() {
                            ? (old_y + old_h)
                            : (w.rect.y + w.rect.h);
         add_dirty(ui::Rect{rx0, ry0, rx1 - rx0, ry1 - ry0});
+      }
+    }
+
+    // Check for file opening requests from finder windows
+    for (uint32_t i = 0; i < window_count; ++i) {
+      ui::window::Window &w = windows[i];
+      if (w.user_data) {
+        // Check if this is a finder window with a file to open
+        // We need to cast and check the state
+        auto *finder_state =
+            static_cast<ui::apps::finder::FinderState *>(w.user_data);
+        if (finder_state && finder_state->should_open_file &&
+            finder_state->file_to_open[0] != '\0' && window_count < 16) {
+
+          // Clear the file opening request immediately to prevent multiple
+          // windows
+          char file_path_to_open[256];
+          uint32_t path_len = 0;
+          for (; finder_state->file_to_open[path_len] &&
+                 path_len < sizeof(file_path_to_open) - 1;
+               ++path_len) {
+            file_path_to_open[path_len] = finder_state->file_to_open[path_len];
+          }
+          file_path_to_open[path_len] = '\0';
+
+          finder_state->file_to_open[0] = '\0';
+          finder_state->should_open_file = false;
+
+          // Create text viewer for the file
+          if (rootfs && rootfs->address && rootfs->size > 4096) {
+            static fs::MemoryBlockDevice s_memdev4(nullptr, 0);
+            static fs::Ext4 s_ext4_4(s_memdev4);
+            static bool init4 = false;
+            if (!init4) {
+              s_memdev4 = fs::MemoryBlockDevice(rootfs->address, rootfs->size);
+              init4 = s_ext4_4.mount();
+            }
+            if (init4) {
+              windows[window_count++] = ui::apps::textviewer::create_window(
+                  screen_w, screen_h, s_ext4_4, file_path_to_open);
+
+              // Focus the new text viewer
+              for (uint32_t j = 0; j < window_count; ++j) {
+                windows[j].focused = (j == window_count - 1);
+              }
+
+              ui_changed = true;
+            }
+          }
+        }
       }
     }
 
