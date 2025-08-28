@@ -4,18 +4,17 @@
 #include "../../ui/include/taskbar.hpp"
 #include "../../ui/include/ui.hpp"
 #include "../../ui/include/window.hpp"
-#include "font.hpp"
-#include "graphics.hpp"
-#include <cstddef>
-#include <cstdint>
-#include <limine.h>
-// FS includes
 #include "apps/about.hpp"
 #include "apps/finder.hpp"
 #include "apps/start_ids.hpp"
 #include "apps/welcome.hpp"
+#include "font.hpp"
 #include "fs/blockdev.hpp"
 #include "fs/ext4.hpp"
+#include "graphics.hpp"
+#include <cstddef>
+#include <cstdint>
+#include <limine.h>
 
 // Set the base revision to 3, this is recommended as this is the latest
 // base revision described by the Limine boot protocol specification.
