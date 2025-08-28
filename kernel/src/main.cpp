@@ -191,8 +191,8 @@ extern "C" void kmain() {
                                        0xFFFFFF, default_font, 4);
 
   // Draw loading bar outline
-  int bar_x = framebuffer->width / 2 - 100;
-  int bar_y = framebuffer->height / 2 + 50;
+  int bar_x = static_cast<int>(framebuffer->width) / 2 - 100;
+  int bar_y = static_cast<int>(framebuffer->height) / 2 + 50;
   int bar_width = 200;
   int bar_height = 20;
 
