@@ -2,6 +2,7 @@
 #include "../../include/window.hpp"
 #include "font.hpp"
 #include "graphics.hpp"
+#include "window_manager.hpp"
 
 namespace ui::apps::finder {
 
@@ -200,8 +201,8 @@ static void on_mouse(const ui::window::MouseEvent &ev, void *ud) {
   }
 }
 
-bool create_window(uint32_t screen_w, uint32_t screen_h, fs::Ext4 &filesystem,
-                   ui::window::Window &out_window) {
+ui::window::Window create_window(uint32_t screen_w, uint32_t screen_h,
+                                 fs::Ext4 &filesystem) {
   static FinderState s_state{}; // simple static for now
   s_state.fs = &filesystem;
   s_state.cwd_buf[0] = '/';
@@ -217,22 +218,17 @@ bool create_window(uint32_t screen_w, uint32_t screen_h, fs::Ext4 &filesystem,
   s_state.press_x = 0;
   s_state.press_y = 0;
 
-  out_window = {};
-  out_window.rect = ui::Rect{40, 40, screen_w / 2, screen_h / 2};
-  out_window.title = "Finder";
-  out_window.minimized = false;
-  out_window.maximized = false;
-  out_window.fullscreen = false;
-  out_window.resizable = true;
-  out_window.movable = true;
-  out_window.draggable = true;
-  out_window.closeable = true;
-  out_window.focused = true;
-  out_window.always_on_top = false;
-  out_window.user_data = &s_state;
-  out_window.draw_content = &draw;
-  out_window.on_mouse = &on_mouse;
-  return true;
+  ui::window_manager::WindowOptions options;
+  options.title = "Finder";
+  options.width = screen_w / 2;
+  options.height = screen_h / 2;
+  options.x = 40; // Fixed position
+  options.y = 40;
+  options.user_data = &s_state;
+  options.draw_content = &draw;
+  options.on_mouse = &on_mouse;
+
+  return ui::window_manager::create_window(screen_w, screen_h, options);
 }
 
 } // namespace ui::apps::finder

@@ -9,38 +9,18 @@ static void draw(Graphics &gfx, const ui::Rect &r, void * /*ud*/) {
                   default_font);
 }
 
-bool create_window(uint32_t screen_w, uint32_t screen_h,
-                   ui::window::Window &out_window) {
-  // Default centered Welcome window size
-  const uint32_t taskbar_h =
-      0; // caller decides exact taskbar; we center simply
+ui::window::Window create_window(uint32_t screen_w, uint32_t screen_h) {
+  // Calculate window size based on screen size
   uint32_t win_w = (screen_w > 40 ? (screen_w - 40) * 3 / 5 : screen_w);
-  uint32_t win_h =
-      (screen_h > taskbar_h + 20 ? (screen_h - taskbar_h - 20) * 3 / 5
-                                 : screen_h);
+  uint32_t win_h = (screen_h > 20 ? (screen_h - 20) * 3 / 5 : screen_h);
+
   if (win_w < 320)
     win_w = 320;
   if (win_h < 200)
     win_h = 200;
-  const uint32_t win_x = (screen_w > win_w ? (screen_w - win_w) / 2 : 0);
-  const uint32_t win_y =
-      (screen_h > taskbar_h + win_h ? (screen_h - taskbar_h - win_h) / 2 : 0);
 
-  out_window = {};
-  out_window.rect = ui::Rect{win_x, win_y, win_w, win_h};
-  out_window.title = "Welcome to hOS";
-  out_window.minimized = false;
-  out_window.maximized = false;
-  out_window.fullscreen = false;
-  out_window.resizable = true;
-  out_window.movable = true;
-  out_window.draggable = true;
-  out_window.closeable = true;
-  out_window.focused = false;
-  out_window.always_on_top = false;
-  out_window.user_data = nullptr;
-  out_window.draw_content = &draw;
-  return true;
+  return ui::window_manager::create_centered_window(
+      screen_w, screen_h, "Welcome to hOS", win_w, win_h, &draw);
 }
 
 } // namespace ui::apps::welcome

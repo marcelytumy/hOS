@@ -4,6 +4,7 @@
 #include "../../ui/include/taskbar.hpp"
 #include "../../ui/include/ui.hpp"
 #include "../../ui/include/window.hpp"
+#include "../../ui/include/window_manager.hpp"
 #include "apps/about.hpp"
 #include "apps/finder.hpp"
 #include "apps/start_ids.hpp"
@@ -258,15 +259,8 @@ extern "C" void kmain() {
     win_h = 200;
   // Create initial windows
   ui::window::Window windows[16];
-  ui::apps::welcome::create_window(screen_w, screen_h, windows[0]);
-  // Second window (smaller)
-  uint32_t win2_w = win_w / 2;
-  if (win2_w < 280)
-    win2_w = 280;
-  uint32_t win2_h = win_h / 2;
-  if (win2_h < 160)
-    win2_h = 160;
-  ui::apps::about::create_window(screen_w, screen_h, windows[0], windows[1]);
+  windows[0] = ui::apps::welcome::create_window(screen_w, screen_h);
+  windows[1] = ui::apps::about::create_window(screen_w, screen_h, windows[0]);
   uint32_t window_count = 2;
 
   // Saved rects for restore after maximize
@@ -298,14 +292,12 @@ extern "C" void kmain() {
       set_progress(80);
       graphics.present();
       if (window_count < 16) {
-        ui::window::Window fm{};
-        if (ui::apps::finder::create_window(screen_w, screen_h, s_ext4, fm)) {
-          windows[window_count++] = fm;
-          for (uint32_t j = 0; j < window_count; ++j)
-            windows[j].focused = (j == window_count - 1);
-          ui::draw_desktop(graphics, windows, window_count);
-          graphics.present();
-        }
+        windows[window_count++] =
+            ui::apps::finder::create_window(screen_w, screen_h, s_ext4);
+        for (uint32_t j = 0; j < window_count; ++j)
+          windows[j].focused = (j == window_count - 1);
+        ui::draw_desktop(graphics, windows, window_count);
+        graphics.present();
       }
     }
   }
@@ -397,16 +389,12 @@ extern "C" void kmain() {
           } else if (sm != UINT32_MAX) {
             // Launch app by id
             if (sm == apps::Start_Welcome && window_count < 16) {
-              ui::window::Window w{};
-              if (ui::apps::welcome::create_window(screen_w, screen_h, w)) {
-                windows[window_count++] = w;
-              }
+              windows[window_count++] =
+                  ui::apps::welcome::create_window(screen_w, screen_h);
             } else if (sm == apps::Start_About && window_count < 16) {
-              ui::window::Window w{};
-              if (ui::apps::about::create_window(
-                      screen_w, screen_h, windows[window_count - 1], w)) {
-                windows[window_count++] = w;
-              }
+              uint32_t current_count = window_count;
+              windows[window_count++] = ui::apps::about::create_window(
+                  screen_w, screen_h, windows[current_count - 1]);
             } else if (sm == apps::Start_Finder && window_count < 16 &&
                        rootfs && rootfs->address && rootfs->size > 4096) {
               // Reuse mounted fs if available
@@ -419,11 +407,8 @@ extern "C" void kmain() {
                 init2 = s_ext4_2.mount();
               }
               if (init2) {
-                ui::window::Window fm{};
-                if (ui::apps::finder::create_window(screen_w, screen_h,
-                                                    s_ext4_2, fm)) {
-                  windows[window_count++] = fm;
-                }
+                windows[window_count++] = ui::apps::finder::create_window(
+                    screen_w, screen_h, s_ext4_2);
               }
             }
             // Focus the newly created window

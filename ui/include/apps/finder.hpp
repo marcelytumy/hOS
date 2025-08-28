@@ -26,9 +26,9 @@ struct FinderState {
 };
 
 // Populate a Finder window configured to list the root directory of the given
-// fs. Returns true on success.
-bool create_window(uint32_t screen_w, uint32_t screen_h, fs::Ext4 &filesystem,
-                   ui::window::Window &out_window);
+// fs. Returns the created window.
+ui::window::Window create_window(uint32_t screen_w, uint32_t screen_h,
+                                 fs::Ext4 &filesystem);
 
 } // namespace finder
 } // namespace apps
