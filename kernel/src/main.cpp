@@ -197,20 +197,57 @@ extern "C" void kmain() {
   int bar_height = 20;
 
   graphics.draw_rect(bar_x, bar_y, bar_width, bar_height, 0xFFFFFF);
+  // Progress drawer: fills inner area based on percent [0..100]
+  auto set_progress = [&](int percent) {
+    if (percent < 0)
+      percent = 0;
+    if (percent > 100)
+      percent = 100;
+    int inner_w = bar_width - 2;
+    int inner_h = bar_height - 2;
+    int fill_w = (inner_w * percent) / 100;
+    // Draw border (kept), then fill inside from left
+    graphics.draw_rect(bar_x, bar_y, bar_width, bar_height, 0xFFFFFF);
+    if (fill_w > 0) {
+      graphics.fill_rect(bar_x + 1, bar_y + 1, fill_w, inner_h, 0xFFFFFF);
+    }
+  };
+  // Begin with 5%
+  set_progress(5);
 
-  // Animate loading bar fill
-  for (int fill = 0; fill <= bar_width; fill++) {
-    // Fill the bar up to 'fill' width
-    graphics.fill_rect(bar_x, bar_y, fill, bar_height, 0xFFFFFF);
-
-    // Simple delay loop (not precise, but enough for a visible animation)
-    for (volatile int d = 0; d < 1000000; ++d) {
+  // Try to locate a rootfs module from Limine modules (real milestone)
+  const limine_module_response *mods = module_request.response;
+  const limine_file *rootfs = nullptr;
+  if (mods && mods->module_count > 0) {
+    for (uint64_t i = 0; i < mods->module_count; ++i) {
+      const limine_file *f = mods->modules[i];
+      if (!f || !f->path)
+        continue;
+#if LIMINE_API_REVISION >= 3
+      if (f->string) {
+        const char *s = f->string;
+        bool match =
+            (s[0] == 'r' && s[1] == 'o' && s[2] == 'o' && s[3] == 't' &&
+             s[4] == 'f' && s[5] == 's' && s[6] == '\0');
+        if (match) {
+          rootfs = f;
+          break;
+        }
+      }
+#endif
+      if (rootfs == nullptr)
+        rootfs = f;
     }
   }
+  // Found modules/rootfs info ~40%
+  set_progress(rootfs ? 40 : 20);
 
   // Enable double-buffering backbuffer
   static uint32_t backbuffer_storage[1920 * 1080];
   graphics.enable_backbuffer(backbuffer_storage, 1920u * 1080u);
+  // Backbuffer enabled ~50%
+  set_progress(50);
+  graphics.present();
 
   // Compute initial centered window rect
   const uint32_t screen_w = graphics.get_width();
@@ -247,34 +284,9 @@ extern "C" void kmain() {
   ui::draw_desktop(graphics, windows, window_count);
   // Draw overlay if any (none at boot)
   graphics.present();
-
-  // Try to locate a rootfs module from Limine modules
-  const limine_module_response *mods = module_request.response;
-  const limine_file *rootfs = nullptr;
-  if (mods && mods->module_count > 0) {
-    // Prefer a module tagged with string "rootfs"; otherwise fall back to first
-    // module
-    for (uint64_t i = 0; i < mods->module_count; ++i) {
-      const limine_file *f = mods->modules[i];
-      if (!f || !f->path)
-        continue;
-        // String tag available in API rev >= 3
-#if LIMINE_API_REVISION >= 3
-      if (f->string) {
-        const char *s = f->string;
-        bool match =
-            (s[0] == 'r' && s[1] == 'o' && s[2] == 'o' && s[3] == 't' &&
-             s[4] == 'f' && s[5] == 's' && s[6] == '\0');
-        if (match) {
-          rootfs = f;
-          break;
-        }
-      }
-#endif
-      if (rootfs == nullptr)
-        rootfs = f;
-    }
-  }
+  // Initial desktop drawn ~60%
+  set_progress(60);
+  graphics.present();
 
   if (rootfs && rootfs->address && rootfs->size > 4096) {
     // Static lifetime so callbacks can read later
@@ -287,6 +299,9 @@ extern "C" void kmain() {
     }
     static fs::Ext4 s_ext4(s_memdev);
     if (s_ext4.mount()) {
+      // Filesystem mounted ~80%
+      set_progress(80);
+      graphics.present();
       if (window_count < 16) {
         ui::window::Window fm{};
         if (ui::apps::finder::create_window(screen_w, screen_h, s_ext4, fm)) {
@@ -307,6 +322,8 @@ extern "C" void kmain() {
   cursor.set_position(screen_w / 2, screen_h / 2, screen_w, screen_h);
   cursor.draw(graphics);
   graphics.present();
+  // Input ready, UI responsive ~100%
+  set_progress(100);
 
   // Start menu state and items
   static const ui::startmenu::Item kStartItems[] = {
