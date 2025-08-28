@@ -71,31 +71,31 @@ __attribute__((
 
 extern "C" {
 
-void *memcpy(void *__restrict dest, const void *__restrict src, std::size_t n) {
-  std::uint8_t *__restrict pdest = static_cast<std::uint8_t *__restrict>(dest);
-  const std::uint8_t *__restrict psrc =
-      static_cast<const std::uint8_t *__restrict>(src);
+void *memcpy(void *dest, const void *src, std::size_t n) {
+  auto *d = static_cast<uint8_t *>(dest);
+  const auto *s = static_cast<const uint8_t *>(src);
 
-  for (std::size_t i = 0; i < n; i++) {
-    pdest[i] = psrc[i];
+  for (std::size_t i = 0; i < n; ++i) {
+    d[i] = s[i];
   }
 
   return dest;
 }
 
-void *memset(void *s, int c, std::size_t n) {
-  std::uint8_t *p = static_cast<std::uint8_t *>(s);
+void *memset(void *buffer, int value, std::size_t count) {
+  auto *p = static_cast<std::uint8_t *>(buffer);
+  auto byte_value = static_cast<std::uint8_t>(value);
 
-  for (std::size_t i = 0; i < n; i++) {
-    p[i] = static_cast<uint8_t>(c);
+  for (std::size_t i = 0; i < count; ++i) {
+    p[i] = byte_value;
   }
 
-  return s;
+  return buffer;
 }
 
 void *memmove(void *dest, const void *src, std::size_t n) {
-  std::uint8_t *pdest = static_cast<std::uint8_t *>(dest);
-  const std::uint8_t *psrc = static_cast<const std::uint8_t *>(src);
+  auto *pdest = static_cast<std::uint8_t *>(dest);
+  const auto *psrc = static_cast<const std::uint8_t *>(src);
 
   if (src > dest) {
     for (std::size_t i = 0; i < n; i++) {
@@ -111,8 +111,8 @@ void *memmove(void *dest, const void *src, std::size_t n) {
 }
 
 int memcmp(const void *s1, const void *s2, std::size_t n) {
-  const std::uint8_t *p1 = static_cast<const std::uint8_t *>(s1);
-  const std::uint8_t *p2 = static_cast<const std::uint8_t *>(s2);
+  const auto *p1 = static_cast<const std::uint8_t *>(s1);
+  const auto *p2 = static_cast<const std::uint8_t *>(s2);
 
   for (std::size_t i = 0; i < n; i++) {
     if (p1[i] != p2[i]) {
@@ -131,10 +131,6 @@ void hcf() {
   for (;;) {
 #if defined(__x86_64__)
     asm("hlt");
-#elif defined(__aarch64__) || defined(__riscv)
-    asm("wfi");
-#elif defined(__loongarch64)
-    asm("idle 0");
 #endif
   }
 }
@@ -453,12 +449,13 @@ extern "C" void kmain() {
             drag_off_x = cursor.x() - windows[i].rect.x;
             drag_off_y = cursor.y() - windows[i].rect.y;
             // Bring to front
-            if (static_cast<uint32_t>(i) != window_count - 1) {
+            if (static_cast<unsigned int>(i) != window_count - 1) {
               ui::window::Window tmp = windows[i];
-              for (uint32_t k = i; k + 1 < window_count; ++k)
+              for (auto k = static_cast<unsigned int>(i); k + 1 < window_count;
+                   ++k)
                 windows[k] = windows[k + 1];
               windows[window_count - 1] = tmp;
-              dragging_index = window_count - 1;
+              dragging_index = static_cast<int>(window_count - 1);
             }
             for (uint32_t j = 0; j < window_count; ++j)
               windows[j].focused = (j == static_cast<uint32_t>(dragging_index));
@@ -603,7 +600,7 @@ extern "C" void kmain() {
                 windows[window_count - 1] = tmp;
                 saved_rects[window_count - 1] = sr;
                 saved_rect_valid[window_count - 1] = srv;
-                dragging_index = window_count - 1;
+                dragging_index = static_cast<int>(window_count - 1);
                 add_dirty(ui::Rect{windows[dragging_index].rect.x,
                                    windows[dragging_index].rect.y,
                                    windows[dragging_index].rect.w,
