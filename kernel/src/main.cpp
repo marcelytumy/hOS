@@ -725,6 +725,44 @@ extern "C" void kmain() {
       }
     }
 
+    // Dispatch mouse events to window content (topmost first)
+    auto dispatch_to_content = [&](ui::window::MouseEvent::Type etype) {
+      // Find topmost window whose content rect contains the cursor
+      for (int i = static_cast<int>(window_count) - 1; i >= 0; --i) {
+        const ui::window::Window &w = windows[i];
+        if (w.minimized || w.on_mouse == nullptr)
+          continue;
+        ui::Rect content = ui::window::get_content_rect(w, screen_w, screen_h);
+        uint32_t cx = cursor.x();
+        uint32_t cy = cursor.y();
+        if (cx >= content.x && cx < content.x + content.w && cy >= content.y &&
+            cy < content.y + content.h) {
+          ui::window::MouseEvent ev{};
+          ev.type = etype;
+          ev.x = cx - content.x;
+          ev.y = cy - content.y;
+          ev.left = left;
+          ev.right = right;
+          ev.middle = middle;
+          w.on_mouse(ev, w.user_data);
+          // Assume content may have changed (e.g., hover highlight)
+          ui_changed = true;
+          break;
+        }
+      }
+    };
+
+    // Generate events based on current state
+    if (cursor_moved) {
+      dispatch_to_content(ui::window::MouseEvent::Type::Move);
+    }
+    if (left && !prev_left) {
+      dispatch_to_content(ui::window::MouseEvent::Type::Down);
+    }
+    if (!left && prev_left) {
+      dispatch_to_content(ui::window::MouseEvent::Type::Up);
+    }
+
     // Present: prefer minimal redraw on cursor-only movement
     if (ui_changed) {
       // Full scene redraw invalidates cursor underlay cache
