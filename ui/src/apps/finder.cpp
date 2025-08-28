@@ -5,6 +5,18 @@
 
 namespace ui::apps::finder {
 
+static inline bool is_dot_or_dotdot(const char *name) {
+  if (!name)
+    return false;
+  // "."
+  if (name[0] == '.' && name[1] == '\0')
+    return true;
+  // ".."
+  if (name[0] == '.' && name[1] == '.' && name[2] == '\0')
+    return true;
+  return false;
+}
+
 static void draw(Graphics &gfx, const ui::Rect &r, void *ud) {
   FinderState *st = static_cast<FinderState *>(ud);
   if (!st || !st->fs)
@@ -14,6 +26,14 @@ static void draw(Graphics &gfx, const ui::Rect &r, void *ud) {
   const char *path = st->cwd ? st->cwd : "/";
   if (!st->fs->list_dir_by_path(path, ents, 64, cnt))
     return;
+  // Build filtered list excluding "." and ".."
+  fs::Dirent vis[64];
+  uint32_t vcnt = 0;
+  for (uint32_t i = 0; i < cnt && vcnt < 64; ++i) {
+    if (is_dot_or_dotdot(ents[i].name))
+      continue;
+    vis[vcnt++] = ents[i];
+  }
   const uint32_t row_h = 20;
   const uint32_t icon_w = 10;
   uint32_t y = r.y;
@@ -22,15 +42,15 @@ static void draw(Graphics &gfx, const ui::Rect &r, void *ud) {
   gfx.draw_string("<", r.x + 4, y, 0xFFFFFF, default_font);
   gfx.draw_string(st->cwd ? st->cwd : "/", r.x + 24, y, 0xAAAAFF, default_font);
   y += 24;
-  for (uint32_t i = 0; i < cnt; ++i) {
+  for (uint32_t i = 0; i < vcnt; ++i) {
     if (y + row_h > r.y + r.h)
       break;
     uint32_t name_col =
-        (ents[i].type == fs::NodeType::Directory) ? 0x80FF80 : 0xFFFFFF;
+        (vis[i].type == fs::NodeType::Directory) ? 0x80FF80 : 0xFFFFFF;
     uint32_t icon_col =
-        (ents[i].type == fs::NodeType::Directory) ? 0x2E8B57 : 0x4682B4;
+        (vis[i].type == fs::NodeType::Directory) ? 0x2E8B57 : 0x4682B4;
     gfx.fill_rect(r.x, y + 4, icon_w, icon_w, icon_col);
-    gfx.draw_string(ents[i].name, r.x + icon_w + 8, y + 2, name_col,
+    gfx.draw_string(vis[i].name, r.x + icon_w + 8, y + 2, name_col,
                     default_font);
     // Highlight selected
     if (static_cast<int32_t>(i) == st->selected_index) {
@@ -58,10 +78,18 @@ static void open_selected(FinderState *st) {
   uint32_t cnt = 0;
   if (!st->fs->list_dir_by_path(st->cwd ? st->cwd : "/", ents, 64, cnt))
     return;
+  // Build filtered list excluding "." and ".."
+  fs::Dirent vis[64];
+  uint32_t vcnt = 0;
+  for (uint32_t i = 0; i < cnt && vcnt < 64; ++i) {
+    if (is_dot_or_dotdot(ents[i].name))
+      continue;
+    vis[vcnt++] = ents[i];
+  }
   if (st->selected_index < 0 ||
-      static_cast<uint32_t>(st->selected_index) >= cnt)
+      static_cast<uint32_t>(st->selected_index) >= vcnt)
     return;
-  const fs::Dirent &e = ents[st->selected_index];
+  const fs::Dirent &e = vis[st->selected_index];
   if (e.type == fs::NodeType::Directory) {
     // Append name to cwd
     char new_path[256];
