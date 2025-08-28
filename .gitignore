@@ -6,3 +6,6 @@
 .cache
 *.o
 *.cpp.o
+*.cpp.d
+*.c.d
+kernel/bin-x86_64
