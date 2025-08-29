@@ -40,22 +40,42 @@ static void draw(Graphics &gfx, const ui::Rect &r, void *ud) {
     return;
   }
 
-  // Calculate text area (excluding scrollbar)
+  // Calculate text area (reserve space for scrollbar on the right)
   uint32_t text_area_h = r.h - kPadding * 2;
+  uint32_t text_area_w = r.w - kPadding * 2 - kScrollbarWidth;
+  if (text_area_w < default_font.char_width) {
+    text_area_w = default_font.char_width;
+  }
   uint32_t text_x = r.x + kPadding;
   uint32_t text_y = r.y + kPadding;
 
-  // Count lines and calculate max scroll
+  // Count wrapped lines and calculate max scroll
   uint32_t line_count = 0;
   uint32_t visible_lines = text_area_h / kLineHeight;
+  uint32_t max_cols = text_area_w / default_font.char_width;
+  if (max_cols == 0)
+    max_cols = 1;
 
-  for (uint32_t i = 0; i < st->content_size; ++i) {
-    if (st->content[i] == '\n') {
-      line_count++;
+  // Count lines accounting for word wrap (simple character wrap)
+  {
+    uint32_t i = 0;
+    while (i < st->content_size) {
+      // Determine length until newline or end
+      uint32_t start = i;
+      while (i < st->content_size && st->content[i] != '\n') {
+        i++;
+      }
+      uint32_t raw_len = i - start;
+      // Empty line still counts as one
+      uint32_t segs =
+          (raw_len == 0) ? 1 : ((raw_len + max_cols - 1) / max_cols);
+      line_count += segs;
+      // Skip the newline character if present
+      if (i < st->content_size && st->content[i] == '\n') {
+        i++;
+      }
     }
-  }
-  if (st->content_size > 0 && st->content[st->content_size - 1] != '\n') {
-    line_count++; // Count last line if it doesn't end with newline
+    // Special case: empty content shouldn't reach here due to earlier check
   }
 
   st->max_scroll_y =
@@ -64,40 +84,47 @@ static void draw(Graphics &gfx, const ui::Rect &r, void *ud) {
     st->scroll_y = st->max_scroll_y;
   }
 
-  // Draw text content
-  uint32_t current_line = 0;
-  uint32_t line_start = 0;
+  // Draw text content with wrapping
+  uint32_t current_visual_line = 0;
   uint32_t y_offset = 0;
+  uint32_t i = 0;
+  while (i < st->content_size && y_offset < text_area_h) {
+    // Find end of raw line (until newline or end)
+    uint32_t start = i;
+    while (i < st->content_size && st->content[i] != '\n') {
+      i++;
+    }
+    uint32_t raw_len = i - start;
 
-  for (uint32_t i = 0; i < st->content_size && y_offset < text_area_h; ++i) {
-    if (st->content[i] == '\n' || i == st->content_size - 1) {
-      // Draw this line if it's in the visible range
-      if (current_line >= st->scroll_y &&
-          current_line < st->scroll_y + visible_lines) {
-        uint32_t line_len = i - line_start;
-        if (i == st->content_size - 1 && st->content[i] != '\n') {
-          line_len++; // Include the last character
-        }
-
-        // Truncate line if it's too long
-        if (line_len > 0) {
+    // Number of wrapped segments for this raw line
+    uint32_t segs = (raw_len == 0) ? 1 : ((raw_len + max_cols - 1) / max_cols);
+    for (uint32_t s = 0; s < segs && y_offset < text_area_h; ++s) {
+      if (current_visual_line >= st->scroll_y &&
+          current_visual_line < st->scroll_y + visible_lines) {
+        uint32_t seg_start = start + s * max_cols;
+        uint32_t remaining =
+            (raw_len > s * max_cols) ? (raw_len - s * max_cols) : 0;
+        uint32_t seg_len = remaining > max_cols ? max_cols : remaining;
+        // For empty raw line, draw nothing but still advance one visual line
+        if (seg_len > 0) {
           char line_buf[256];
-          uint32_t copy_len = (line_len < sizeof(line_buf) - 1)
-                                  ? line_len
-                                  : sizeof(line_buf) - 1;
+          uint32_t copy_len = seg_len < (sizeof(line_buf) - 1)
+                                  ? seg_len
+                                  : (sizeof(line_buf) - 1);
           for (uint32_t j = 0; j < copy_len; ++j) {
-            line_buf[j] = st->content[line_start + j];
+            line_buf[j] = st->content[seg_start + j];
           }
           line_buf[copy_len] = '\0';
-
           gfx.draw_string(line_buf, text_x, text_y + y_offset, kTextColor,
                           default_font);
         }
         y_offset += kLineHeight;
       }
-
-      line_start = i + 1;
-      current_line++;
+      current_visual_line++;
+    }
+    // Skip newline character
+    if (i < st->content_size && st->content[i] == '\n') {
+      i++;
     }
   }
 
