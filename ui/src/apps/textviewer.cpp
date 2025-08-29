@@ -143,10 +143,25 @@ static void draw(Graphics &gfx, const ui::Rect &r, void *ud) {
     if (thumb_h < 20)
       thumb_h = 20; // Minimum thumb size
 
-    uint32_t thumb_y = scrollbar_y + (st->scroll_y * (scrollbar_h - thumb_h)) /
-                                         st->max_scroll_y;
+    uint32_t thumb_y =
+        scrollbar_y + (st->scroll_y * (scrollbar_h - thumb_h)) /
+                          (st->max_scroll_y == 0 ? 1 : st->max_scroll_y);
     gfx.fill_rect(scrollbar_x, thumb_y, kScrollbarWidth, thumb_h,
                   kScrollbarThumbColor);
+
+    // Cache geometry/state for mouse handling (store in content-local coords)
+    st->scrollbar_visible = true;
+    st->scrollbar_x = scrollbar_x - r.x;
+    st->scrollbar_y = scrollbar_y - r.y;
+    st->scrollbar_h = scrollbar_h;
+    st->thumb_y = thumb_y - r.y;
+    st->thumb_h = thumb_h;
+    st->visible_lines_cache = visible_lines;
+    st->line_count_cache = line_count;
+    st->content_w = text_area_w;
+    st->content_h = text_area_h;
+  } else {
+    st->scrollbar_visible = false;
   }
 }
 
@@ -155,22 +170,80 @@ static void on_mouse(const ui::window::MouseEvent &ev, void *ud) {
   if (!st)
     return;
 
-  // Handle scrollbar clicks
-  if (ev.type == ui::window::MouseEvent::Type::Down && ev.left) {
-    // Check if click is in scrollbar area
-    if (ev.x >= 400 - kScrollbarWidth - kPadding) { // Approximate window width
-      // Calculate scroll position based on click
-      uint32_t scrollbar_h = 300 - kPadding * 2; // Approximate window height
-      uint32_t click_y = ev.y - kPadding;
+  if (!st->scrollbar_visible || st->max_scroll_y == 0) {
+    if (ev.type == ui::window::MouseEvent::Type::Up) {
+      st->dragging_thumb = false;
+    }
+    return;
+  }
 
-      if (st->max_scroll_y > 0) {
-        uint32_t new_scroll = (click_y * st->max_scroll_y) / scrollbar_h;
-        if (new_scroll > st->max_scroll_y) {
+  const uint32_t sb_x0 = st->scrollbar_x;
+  const uint32_t sb_x1 = st->scrollbar_x + kScrollbarWidth;
+  const uint32_t sb_y0 = st->scrollbar_y;
+  const uint32_t sb_y1 = st->scrollbar_y + st->scrollbar_h;
+
+  if (ev.type == ui::window::MouseEvent::Type::Down && ev.left) {
+    // Inside scrollbar column?
+    if (ev.x >= sb_x0 && ev.x < sb_x1 && ev.y >= sb_y0 && ev.y < sb_y1) {
+      // Inside thumb?
+      if (ev.y >= st->thumb_y && ev.y < st->thumb_y + st->thumb_h) {
+        st->dragging_thumb = true;
+        st->drag_offset_y =
+            static_cast<int32_t>(ev.y) - static_cast<int32_t>(st->thumb_y);
+      } else {
+        // Clicked track: jump the thumb center to click position
+        uint32_t track_range = (st->scrollbar_h > st->thumb_h)
+                                   ? (st->scrollbar_h - st->thumb_h)
+                                   : 1;
+        int32_t target_thumb_y =
+            static_cast<int32_t>(ev.y) - static_cast<int32_t>(st->thumb_h) / 2;
+        if (target_thumb_y < static_cast<int32_t>(st->scrollbar_y))
+          target_thumb_y = static_cast<int32_t>(st->scrollbar_y);
+        int32_t max_thumb_y = static_cast<int32_t>(st->scrollbar_y) +
+                              static_cast<int32_t>(track_range);
+        if (target_thumb_y > max_thumb_y)
+          target_thumb_y = max_thumb_y;
+        uint32_t pos = static_cast<uint32_t>(
+            target_thumb_y - static_cast<int32_t>(st->scrollbar_y));
+        uint32_t new_scroll =
+            (pos * st->max_scroll_y) /
+            (track_range == 0 ? 1u : static_cast<uint32_t>(track_range));
+        if (new_scroll > st->max_scroll_y)
           new_scroll = st->max_scroll_y;
-        }
         st->scroll_y = new_scroll;
       }
     }
+  } else if (ev.type == ui::window::MouseEvent::Type::Move) {
+    // Start drag when moving with left held over thumb (finder-like)
+    if (ev.left && !st->dragging_thumb) {
+      if (ev.x >= sb_x0 && ev.x < sb_x1 && ev.y >= st->thumb_y &&
+          ev.y < st->thumb_y + st->thumb_h) {
+        st->dragging_thumb = true;
+        st->drag_offset_y =
+            static_cast<int32_t>(ev.y) - static_cast<int32_t>(st->thumb_y);
+      }
+    }
+    if (st->dragging_thumb) {
+      uint32_t track_range =
+          (st->scrollbar_h > st->thumb_h) ? (st->scrollbar_h - st->thumb_h) : 1;
+      int32_t new_thumb_y = static_cast<int32_t>(ev.y) - st->drag_offset_y;
+      if (new_thumb_y < static_cast<int32_t>(st->scrollbar_y))
+        new_thumb_y = static_cast<int32_t>(st->scrollbar_y);
+      int32_t max_thumb_y = static_cast<int32_t>(st->scrollbar_y) +
+                            static_cast<int32_t>(track_range);
+      if (new_thumb_y > max_thumb_y)
+        new_thumb_y = max_thumb_y;
+      uint32_t pos = static_cast<uint32_t>(
+          new_thumb_y - static_cast<int32_t>(st->scrollbar_y));
+      uint32_t new_scroll =
+          (pos * st->max_scroll_y) /
+          (track_range == 0 ? 1u : static_cast<uint32_t>(track_range));
+      if (new_scroll > st->max_scroll_y)
+        new_scroll = st->max_scroll_y;
+      st->scroll_y = new_scroll;
+    }
+  } else if (ev.type == ui::window::MouseEvent::Type::Up) {
+    st->dragging_thumb = false;
   }
 }
 
@@ -225,6 +298,14 @@ ui::window::Window create_window(uint32_t screen_w, uint32_t screen_h,
   s_state.max_scroll_y = 0;
   s_state.content_loaded = false;
   s_state.load_error = nullptr;
+  s_state.dragging_thumb = false;
+  s_state.drag_offset_y = 0;
+  s_state.scrollbar_visible = false;
+  s_state.scrollbar_x = s_state.scrollbar_y = s_state.scrollbar_h = 0;
+  s_state.thumb_y = s_state.thumb_h = 0;
+  s_state.content_w = s_state.content_h = 0;
+  s_state.visible_lines_cache = 0;
+  s_state.line_count_cache = 0;
 
   // Copy file path
   if (file_path) {
