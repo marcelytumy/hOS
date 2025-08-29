@@ -170,6 +170,21 @@ static void on_mouse(const ui::window::MouseEvent &ev, void *ud) {
   if (!st)
     return;
 
+  if (ev.type == ui::window::MouseEvent::Type::Wheel) {
+    if (st->max_scroll_y > 0) {
+      int32_t s = static_cast<int32_t>(st->scroll_y);
+      // Each wheel notch scrolls 3 lines
+      int32_t delta = (ev.wheel_y > 0 ? -3 : 3);
+      s += delta;
+      if (s < 0)
+        s = 0;
+      if (s > static_cast<int32_t>(st->max_scroll_y))
+        s = static_cast<int32_t>(st->max_scroll_y);
+      st->scroll_y = static_cast<uint32_t>(s);
+    }
+    return;
+  }
+
   if (!st->scrollbar_visible || st->max_scroll_y == 0) {
     if (ev.type == ui::window::MouseEvent::Type::Up) {
       st->dragging_thumb = false;

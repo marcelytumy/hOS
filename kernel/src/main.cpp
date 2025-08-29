@@ -336,9 +336,9 @@ extern "C" void kmain() {
 
   // Simple event loop: poll mouse, move cursor, support window dragging
   for (;;) {
-    int8_t dx = 0, dy = 0;
+    int8_t dx = 0, dy = 0, dz = 0;
     bool left = false, right = false, middle = false;
-    if (!mouse.poll_packet(dx, dy, left, right, middle)) {
+    if (!mouse.poll_packet(dx, dy, dz, left, right, middle)) {
       continue;
     }
 
@@ -809,6 +809,7 @@ extern "C" void kmain() {
           ev.left = left;
           ev.right = right;
           ev.middle = middle;
+          ev.wheel_y = 0;
           w.on_mouse(ev, w.user_data);
           // Assume content may have changed (e.g., hover highlight)
           ui_changed = true;
@@ -826,6 +827,32 @@ extern "C" void kmain() {
     }
     if (!left && prev_left) {
       dispatch_to_content(ui::window::MouseEvent::Type::Up);
+    }
+    if (dz != 0) {
+      // Deliver a wheel event to the window under cursor
+      for (int i = static_cast<int>(window_count) - 1; i >= 0; --i) {
+        const ui::window::Window &w = windows[i];
+        if (w.minimized || w.on_mouse == nullptr)
+          continue;
+        ui::Rect content = ui::window::get_content_rect(w, screen_w, screen_h);
+        uint32_t cx = cursor.x();
+        uint32_t cy = cursor.y();
+        if (cx >= content.x && cx < content.x + content.w && cy >= content.y &&
+            cy < content.y + content.h) {
+          ui::window::MouseEvent ev{};
+          ev.type = ui::window::MouseEvent::Type::Wheel;
+          ev.x = cx - content.x;
+          ev.y = cy - content.y;
+          ev.left = left;
+          ev.right = right;
+          ev.middle = middle;
+          // Treat positive dz as wheel up (scroll up)
+          ev.wheel_y = dz;
+          w.on_mouse(ev, w.user_data);
+          ui_changed = true;
+          break;
+        }
+      }
     }
 
     // Present: prefer minimal redraw on cursor-only movement

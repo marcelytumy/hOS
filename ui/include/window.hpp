@@ -7,7 +7,7 @@ namespace ui {
 namespace window {
 
 struct MouseEvent {
-  enum class Type : uint32_t { Down = 0, Up = 1, Move = 2 };
+  enum class Type : uint32_t { Down = 0, Up = 1, Move = 2, Wheel = 3 };
   Type type;
   // Position relative to the window content rect (not including frame/padding)
   uint32_t x;
@@ -15,6 +15,7 @@ struct MouseEvent {
   bool left;
   bool right;
   bool middle;
+  int8_t wheel_y; // positive for wheel up, negative for wheel down
 };
 
 struct Window {

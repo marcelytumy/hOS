@@ -44,6 +44,9 @@ static void draw(Graphics &gfx, const ui::Rect &r, void *ud) {
   gfx.draw_string(st->cwd ? st->cwd : "/", r.x + 24, y, 0xAAAAFF, default_font);
   y += 24;
   for (uint32_t i = 0; i < vcnt; ++i) {
+    // apply scroll offset
+    if (i < st->scroll_offset)
+      continue;
     if (y + row_h > r.y + r.h)
       break;
     uint32_t name_col =
@@ -63,6 +66,9 @@ static void draw(Graphics &gfx, const ui::Rect &r, void *ud) {
     }
     y += row_h;
   }
+
+  // cache how many rows fit for scroll handling
+  st->last_view_rows = (r.h - 24) / row_h;
 
   // Drag ghost
   if (st->dragging && st->drag_index >= 0) {
@@ -221,7 +227,7 @@ static void on_mouse(const ui::window::MouseEvent &ev, void *ud) {
     // Select row
     if (ev.y >= 24) {
       uint32_t row = (ev.y - 24) / 20;
-      st->selected_index = static_cast<int32_t>(row);
+      st->selected_index = static_cast<int32_t>(row + st->scroll_offset);
       st->drag_index = st->selected_index;
       st->dragging = false;
       st->press_x = ev.x;
@@ -242,7 +248,7 @@ static void on_mouse(const ui::window::MouseEvent &ev, void *ud) {
     // Could draw a drag ghost in draw() based on st->dragging and last mouse
     if (ev.y >= 24) {
       uint32_t row = (ev.y - 24) / 20;
-      st->hover_index = static_cast<int32_t>(row);
+      st->hover_index = static_cast<int32_t>(row + st->scroll_offset);
     } else {
       st->hover_index = -1;
     }
@@ -254,6 +260,27 @@ static void on_mouse(const ui::window::MouseEvent &ev, void *ud) {
       if (dx >= 3 || dy >= 3)
         st->dragging = true;
     }
+  } else if (ev.type == ui::window::MouseEvent::Type::Wheel) {
+    // Positive wheel_y scrolls up
+    int32_t so = static_cast<int32_t>(st->scroll_offset);
+    so -= (ev.wheel_y > 0 ? 1 : -1);
+    if (so < 0)
+      so = 0;
+    // compute max
+    fs::Dirent ents[64];
+    uint32_t cnt = 0;
+    const char *path = st->cwd ? st->cwd : "/";
+    if (st->fs->list_dir_by_path(path, ents, 64, cnt)) {
+      uint32_t vcnt = 0;
+      for (uint32_t i = 0; i < cnt && vcnt < 64; ++i)
+        if (!is_dot_or_dotdot(ents[i].name))
+          vcnt++;
+      uint32_t rows = st->last_view_rows ? st->last_view_rows : 10u;
+      uint32_t max_off = (vcnt > rows) ? (vcnt - rows) : 0;
+      if (static_cast<uint32_t>(so) > max_off)
+        so = static_cast<int32_t>(max_off);
+    }
+    st->scroll_offset = static_cast<uint32_t>(so);
   }
 }
 
@@ -275,6 +302,8 @@ ui::window::Window create_window(uint32_t screen_w, uint32_t screen_h,
   s_state.press_y = 0;
   s_state.file_to_open[0] = '\0';
   s_state.should_open_file = false;
+  s_state.scroll_offset = 0;
+  s_state.last_view_rows = 0;
 
   ui::window_manager::WindowOptions options;
   options.title = "Finder";

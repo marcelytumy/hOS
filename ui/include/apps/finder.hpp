@@ -24,6 +24,9 @@ struct FinderState {
   // File opening support
   char file_to_open[256];
   bool should_open_file;
+  // Scrolling
+  uint32_t scroll_offset;
+  uint32_t last_view_rows;
 };
 
 // Populate a Finder window configured to list the root directory of the given
