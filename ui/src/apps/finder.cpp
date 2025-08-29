@@ -22,15 +22,15 @@ static void draw(Graphics &gfx, const ui::Rect &r, void *ud) {
   FinderState *st = static_cast<FinderState *>(ud);
   if (!st || !st->fs)
     return;
-  fs::Dirent ents[64];
+  fs::Dirent ents[256];
   uint32_t cnt = 0;
   const char *path = st->cwd ? st->cwd : "/";
-  if (!st->fs->list_dir_by_path(path, ents, 64, cnt))
+  if (!st->fs->list_dir_by_path(path, ents, 256, cnt))
     return;
   // Build filtered list excluding "." and ".."
-  fs::Dirent vis[64];
+  fs::Dirent vis[256];
   uint32_t vcnt = 0;
-  for (uint32_t i = 0; i < cnt && vcnt < 64; ++i) {
+  for (uint32_t i = 0; i < cnt && vcnt < 256; ++i) {
     if (is_dot_or_dotdot(ents[i].name))
       continue;
     vis[vcnt++] = ents[i];
@@ -81,14 +81,14 @@ static void draw(Graphics &gfx, const ui::Rect &r, void *ud) {
 static void open_selected(FinderState *st) {
   if (!st || !st->fs)
     return;
-  fs::Dirent ents[64];
+  fs::Dirent ents[256];
   uint32_t cnt = 0;
-  if (!st->fs->list_dir_by_path(st->cwd ? st->cwd : "/", ents, 64, cnt))
+  if (!st->fs->list_dir_by_path(st->cwd ? st->cwd : "/", ents, 256, cnt))
     return;
   // Build filtered list excluding "." and ".."
-  fs::Dirent vis[64];
+  fs::Dirent vis[256];
   uint32_t vcnt = 0;
-  for (uint32_t i = 0; i < cnt && vcnt < 64; ++i) {
+  for (uint32_t i = 0; i < cnt && vcnt < 256; ++i) {
     if (is_dot_or_dotdot(ents[i].name))
       continue;
     vis[vcnt++] = ents[i];
@@ -267,12 +267,12 @@ static void on_mouse(const ui::window::MouseEvent &ev, void *ud) {
     if (so < 0)
       so = 0;
     // compute max
-    fs::Dirent ents[64];
+    fs::Dirent ents[256];
     uint32_t cnt = 0;
     const char *path = st->cwd ? st->cwd : "/";
-    if (st->fs->list_dir_by_path(path, ents, 64, cnt)) {
+    if (st->fs->list_dir_by_path(path, ents, 256, cnt)) {
       uint32_t vcnt = 0;
-      for (uint32_t i = 0; i < cnt && vcnt < 64; ++i)
+      for (uint32_t i = 0; i < cnt && vcnt < 256; ++i)
         if (!is_dot_or_dotdot(ents[i].name))
           vcnt++;
       uint32_t rows = st->last_view_rows ? st->last_view_rows : 10u;
